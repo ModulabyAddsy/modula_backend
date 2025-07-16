@@ -26,7 +26,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+# Trigger redeploy
 # ✅ Crear tabla usuarios al iniciar el servidor
 @app.on_event("startup")
 def startup():
