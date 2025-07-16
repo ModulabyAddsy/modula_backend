@@ -1,0 +1,45 @@
+ GENERAR UN NUEVO USUARIO PASOS PARA EJECUTAR 
+
+El usuario llena el formulario en el HTML O INTERFACE EN PYSIDE6
+
+Se capturan los campos obligatorios: nombre, teléfono, fecha de nacimiento, correo, contraseña, nombre de empresa.
+
+También opcionales: correo de recuperación y RFC.
+
+Se hace un POST al endpoint /registrar-cuenta del backend
+
+El backend enruta esta petición a app/routes/auth.py
+
+Esta ruta redirige la lógica hacia el controlador auth_controller.py.
+
+En auth_controller.py, función registrar_cuenta(data) se ejecuta:
+
+Verifica si el correo ya está en uso.
+
+Genera un ID de empresa único (MOD_EMP_####) o reutiliza uno existente.
+
+Genera un token de verificación y su fecha de expiración (20 minutos).
+
+Encripta la contraseña.
+
+Inserta el nuevo usuario en la tabla usuarios con estatus pendiente.
+
+Envía un correo HTML con un botón de verificación (enlace al endpoint /verificar-cuenta con el token).
+
+El usuario abre su correo y hace clic en el botón de verificación
+
+Se hace un GET al endpoint /verificar-cuenta?token=XYZ...
+
+El backend enruta la petición al controlador verificar_cuenta(request)
+
+Valida que el token exista y no esté expirado.
+
+Cambia el estatus de la cuenta a verificada.
+
+Elimina el token y su expiración de la base de datos.
+
+Llama a inicializar_empresa_nueva(id_empresa) para crear carpetas en la nube.
+
+El servidor responde con una página HTML confirmando la verificación
+
+Si falló la creación en la nube, se notifica pero el usuario ya está verificado.
