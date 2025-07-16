@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-
+import os
 from datetime import datetime
 
 from app.services.models import RegistroCuenta
@@ -31,6 +31,12 @@ app.add_middleware(
 @app.on_event("startup")
 def startup():
     crear_tabla_usuarios()
+
+@app.on_event("startup")
+def startup():
+    crear_tabla_usuarios()
+    print("🔧 Conectando a la base de datos...")
+    print("📦 Base de datos actual:", os.getenv("DB_NAME"))
 
 @app.get("/")
 def read_root():
@@ -130,3 +136,5 @@ async def verificar_cuenta(request: Request):
 
     except Exception as e:
         return HTMLResponse(f"<h3>❌ Error al verificar cuenta: {e}</h3>", status_code=500)
+    
+    
