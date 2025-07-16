@@ -17,7 +17,9 @@ from app.services.mail import enviar_correo_verificacion
 from cloud.setup_empresa_cloud import inicializar_empresa_nueva
 
 app = FastAPI()
-
+# Trigger redeploy01
+# Trigger redeploy02
+# Trigger redeploy003 Email Validator
 # ✅ CORS: Permitir peticiones desde HTML locales o dominios públicos
 app.add_middleware(
     CORSMiddleware,
@@ -26,7 +28,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# Trigger redeploy
+
 # ✅ Crear tabla usuarios al iniciar el servidor
 @app.on_event("startup")
 def startup():
