@@ -1,23 +1,32 @@
-from fastapi import Request
-from fastapi.responses import HTMLResponse, RedirectResponse
-from app.services.db import get_connection
-from cloud.setup_empresa_cloud import inicializar_empresa_nueva
-from datetime import datetime
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
-from fastapi import FastAPI, HTTPException
+from datetime import datetime
 from app.services.models import RegistroCuenta
 from app.services.db import (
     crear_tabla_usuarios,
     obtener_usuario_por_correo,
     obtener_o_crear_id_empresa,
-    registrar_usuario
+    registrar_usuario,
+    get_connection,
 )
 from app.services.utils import hash_contrasena, generar_token_verificacion
 from app.services.mail import enviar_correo_verificacion
+from cloud.setup_empresa_cloud import inicializar_empresa_nueva
 
 app = FastAPI()
 
-# Al iniciar el servidor, aseguramos que la tabla exista
+# Habilitar CORS para poder hacer peticiones desde HTML local o dominios públicos
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Puedes reemplazar con el dominio exacto en producción
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Crear tabla usuarios si no existe al iniciar el servidor
 @app.on_event("startup")
 def startup():
     crear_tabla_usuarios()
@@ -84,8 +93,8 @@ async def registrar_cuenta(data: RegistroCuenta):
         raise http_err
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno: {e}")
-    
-    
+
+
 @app.get("/verificar-cuenta", response_class=HTMLResponse)
 async def verificar_cuenta(request: Request):
     """
@@ -128,13 +137,7 @@ async def verificar_cuenta(request: Request):
         if not exito:
             return HTMLResponse("<h3>✅ Cuenta verificada, pero falló la creación en la nube.</h3>", status_code=500)
 
-        # Opcional: redirigir al login de Modula automáticamente
         return HTMLResponse("<h2>✅ Cuenta verificada con éxito. ¡Ya puedes iniciar sesión en Modula!</h2>")
 
     except Exception as e:
         return HTMLResponse(f"<h3>❌ Error al verificar cuenta: {e}</h3>", status_code=500)
-
-    except HTTPException as http_err:
-        raise http_err
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error interno: {e}")
