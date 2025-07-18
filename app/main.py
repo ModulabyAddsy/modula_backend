@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import auth  # Importas módulo de rutas
+from app.services.estructura_db import verificar_y_actualizar_estructura
 
 app = FastAPI()
 
@@ -11,6 +12,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def startup_event():
+    verificar_y_actualizar_estructura()
 
 app.include_router(auth.router)  # Usamos el router definido en auth.py
 
