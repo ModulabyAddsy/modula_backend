@@ -28,7 +28,7 @@ def verificar_y_actualizar_estructura():
         );
     """)
     print("✅ Verificada tabla 'terminales'.")
-    
+
     # --- 3. AÑADIR COLUMNA 'ip_terminal' SI NO EXISTE ---
     cursor.execute("""
         SELECT column_name FROM information_schema.columns 
@@ -36,12 +36,11 @@ def verificar_y_actualizar_estructura():
     """)
     if not cursor.fetchone():
         print("🛠️ Añadiendo columna 'ip_terminal'...")
-        cursor.execute("ALTER TABLE terminales ADD COLUMN IF NOT EXISTS ip_terminal TEXT;")
+        cursor.execute("ALTER TABLE terminales ADD COLUMN ip_terminal TEXT;")
         conn.commit()
     else:
         print("✅ Columna 'ip_terminal' ya existe.")
 
-    conn.commit()
     cursor.close()
     conn.close()
     print("✅ Estructura verificada.")
