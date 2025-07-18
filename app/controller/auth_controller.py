@@ -1,7 +1,9 @@
+#auth_controller.py
 # Importación de librerías y dependencias necesarias
 from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse
 from datetime import datetime
+from app.services.terminal_service import crear_terminal_si_no_existe
 # Importación de funciones de base de datos relacionadas a usuarios y empresas
 from app.services.db import (
     get_connection,
@@ -28,6 +30,7 @@ async def registrar_cuenta(data):
         raise HTTPException(400, "Este correo ya fue registrado pero no verificado.")
 
     # Obtener o generar el ID único para la empresa
+    id_terminal = data.id_terminal  # <- Recibe desde el frontend
     id_empresa = obtener_o_crear_id_empresa(data.nombre_empresa)
     # Generar el token de verificación y su fecha de expiración
     token, token_expira = generar_token_verificacion()
@@ -51,7 +54,7 @@ async def registrar_cuenta(data):
     # Guardar el usuario en la base de datos
     registrar_usuario(nuevo_usuario)
     # Enviar el correo de verificación con el token
-    enviar_correo_verificacion(data.correo, data.nombre_completo, token)
+    enviar_correo_verificacion(data.correo, data.nombre_completo, token, id_terminal)
     # Devolver respuesta exitosa
     return {
         "mensaje": "Cuenta registrada correctamente. Revisa tu correo.",
@@ -91,12 +94,35 @@ async def verificar_cuenta(request: Request):
         """, (usuario["id"],))
         conn.commit()
         conn.close()
+        
+          # === CREAR TERMINAL RELACIONADA ===
+        # Obtener IP del request
+        ip_terminal = request.client.host
+        # Obtener id_terminal desde parámetros (ej. enviado desde frontend)
+        id_terminal = request.query_params.get("id_terminal")
 
-        # Crear la estructura en la nube para la empresa asociada
+        if id_terminal:
+            try:
+                terminal_nueva = crear_terminal_si_no_existe(id_terminal, usuario["id_empresa"], ip_terminal)
+
+                # Si la terminal ya existía => desactivar prueba gratis
+                if not terminal_nueva:
+                    print("⚠️ Terminal ya registrada. Desactivando prueba gratis.")
+                    conn = get_connection()
+                    cur = conn.cursor()
+                    cur.execute("UPDATE usuarios SET prueba_gratis = FALSE WHERE id = %s;", (usuario["id"],))
+                    conn.commit()
+                    conn.close()
+            except Exception as err:
+                print(f"⚠️ Error al registrar terminal automáticamente: {err}")
+        else:
+            print("ℹ️ id_terminal no proporcionado. No se creó terminal.")
+
+        # === CREAR ESTRUCTURA EN LA NUBE ===
         exito = inicializar_empresa_nueva(usuario["id_empresa"])
-        if not exito:   # Verificar si la creación en la nube falló
+        if not exito:
             return HTMLResponse("<h3>✅ Cuenta verificada, pero falló la creación en la nube.</h3>", status_code=500)
-        # Si todo fue exitoso, notificar al usuario
+
         return HTMLResponse("<h2>✅ Cuenta verificada. ¡Ya puedes iniciar sesión!</h2>")
     
     except Exception as e:

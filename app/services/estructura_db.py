@@ -1,3 +1,4 @@
+#estructura_db.py
 from app.services.db import get_connection
 
 def verificar_y_actualizar_estructura():
@@ -17,6 +18,18 @@ def verificar_y_actualizar_estructura():
         conn.commit()
     else:
         print("✅ Columna 'bloqueado' ya existe.")
+        
+    # --- 1.1 AÑADIR COLUMNA 'prueba_gratis' A USUARIOS ---
+    cursor.execute("""
+        SELECT column_name FROM information_schema.columns 
+        WHERE table_name='usuarios' AND column_name='prueba_gratis';
+    """)
+    if not cursor.fetchone():
+        print("🛠️ Añadiendo columna 'prueba_gratis'...")
+        cursor.execute("ALTER TABLE usuarios ADD COLUMN prueba_gratis BOOLEAN DEFAULT TRUE;")
+        conn.commit()
+    else:
+        print("✅ Columna 'prueba_gratis' ya existe.")
 
     # --- 2. CREAR TABLA TERMINALES SI NO EXISTE ---
     cursor.execute("""

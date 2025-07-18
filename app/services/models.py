@@ -19,3 +19,6 @@ class RegistroCuenta(BaseModel):
 
     nombre_empresa: str = Field(..., example="Tienda Don Pepe")
     rfc: Optional[str] = Field(None, example="XAXX010101000")
+    
+    # 👉 NUEVO CAMPO PARA VINCULAR TERMINAL
+    id_terminal: str = Field(..., example="TERMINAL_XYZ123")

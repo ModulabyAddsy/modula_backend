@@ -12,15 +12,14 @@ load_dotenv()
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 
-def enviar_correo_verificacion(destinatario, nombre_usuario, token):
-    
-    enlace = f"https://modula-backend.onrender.com/verificar-cuenta?token={token}"
-    
+def enviar_correo_verificacion(destinatario, nombre_usuario, token, id_terminal):
     """
     Envía un correo con botón de verificación usando SMTP de Gmail.
     """
+
+    enlace = f"https://modula-backend.onrender.com/verificar-cuenta?token={token}&id_terminal={id_terminal}"
+
     asunto = "Verifica tu cuenta Addsy 🚀"
-    enlace = f"https://modula-backend.onrender.com/verificar-cuenta?token={token}"
 
     # HTML personalizado con botón
     cuerpo_html = f"""
