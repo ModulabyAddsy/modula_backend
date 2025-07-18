@@ -1,7 +1,7 @@
-from app.services.db import get_db
+from app.services.db import get_connection
 
 def verificar_y_actualizar_estructura():
-    conn = get_db()
+    conn = get_connection()
     cursor = conn.cursor()
 
     print("🔍 Verificando estructura de base de datos...")
