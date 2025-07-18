@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import auth, terminal
+from app.routes import auth, terminal, webhook_controller
 from app.services.estructura_db import verificar_y_actualizar_estructura
 
 app = FastAPI(title="Modula Backend", version="1.0.0")
@@ -17,6 +17,7 @@ app.add_middleware(
 # Cargar rutas principales
 app.include_router(auth.router)
 app.include_router(terminal.router)
+app.include_router(webhook_controller.router)  # 👈 Webhook de Stripe
 
 # Verificar estructura de base de datos al arrancar
 @app.on_event("startup")
