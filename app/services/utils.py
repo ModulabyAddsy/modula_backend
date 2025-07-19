@@ -5,16 +5,6 @@ import bcrypt
 import secrets
 from datetime import datetime, timedelta
 
-# Encripta la contraseña usando bcrypt
-def hash_contrasena(contrasena: str) -> str:
-    salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(contrasena.encode('utf-8'), salt)
-    return hashed.decode('utf-8')
-
-# Verifica que una contraseña sea correcta contra su hash
-def verificar_contrasena(contrasena: str, hash_almacenado: str) -> bool:
-    return bcrypt.checkpw(contrasena.encode('utf-8'), hash_almacenado.encode('utf-8'))
-
 # Genera un token único para verificación con expiración de 20 minutos
 def generar_token_verificacion():
     token = secrets.token_urlsafe(32)  # token aleatorio seguro

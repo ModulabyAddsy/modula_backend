@@ -3,6 +3,7 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from app.services.models import RegistroCuenta
 from app.controller import auth_controller
+from app.services.models import LoginData, Token
 
 router = APIRouter()
 
@@ -19,3 +20,8 @@ async def registrar_cuenta(data: RegistroCuenta):
 @router.get("/verificar-cuenta", response_class=HTMLResponse)
 async def verificar_cuenta(request: Request):
     return await auth_controller.verificar_cuenta(request)
+
+@router.post("/login", response_model=Token)
+async def login(data: LoginData):
+    """Endpoint para iniciar sesión y obtener un token JWT."""
+    return await auth_controller.login_para_access_token(data)

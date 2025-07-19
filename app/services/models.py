@@ -22,3 +22,17 @@ class RegistroCuenta(BaseModel):
     
     # 👉 NUEVO CAMPO PARA VINCULAR TERMINAL
     id_terminal: str = Field(..., example="TERMINAL_XYZ123")
+
+class LoginData(BaseModel):
+    """Modelo para recibir las credenciales de inicio de sesión."""
+    correo: EmailStr
+    contrasena: str
+
+class Token(BaseModel):
+    """Modelo para la respuesta del token de acceso."""
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    """Modelo para los datos contenidos dentro de un JWT."""
+    correo: Optional[str] = None

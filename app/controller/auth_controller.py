@@ -6,6 +6,8 @@ from datetime import datetime
 from app.services.terminal_service import crear_terminal_si_no_existe
 from app.services.models import RegistroCuenta
 from app.services.stripe_service import crear_sesion_checkout_para_registro # Crearemos esta función
+from app.services.models import LoginData, Token
+from app.services.security import verificar_contrasena, crear_access_token
 
 # Importación de funciones de base de datos relacionadas a usuarios y empresas
 from app.services.db import (
@@ -150,3 +152,36 @@ async def verificar_cuenta(request: Request):
     
     except Exception as e:
         return HTMLResponse(f"<h3>❌ Error al verificar cuenta: {e}</h3>", status_code=500) # Capturar errores inesperados y mostrar mensaje
+    
+async def login_para_access_token(form_data: LoginData):
+    """
+    Autentica un usuario y devuelve un token de acceso JWT.
+    """
+    # 1. Buscar al usuario por correo en la base de datos.
+    usuario = obtener_usuario_por_correo(form_data.correo)
+
+    # 2. Validar que el usuario exista y que la contraseña sea correcta.
+    if not usuario or not verificar_contrasena(form_data.contrasena, usuario["contrasena"]):
+        raise HTTPException(
+            status_code=401,
+            detail="Correo o contraseña incorrectos",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # 3. Validar que la cuenta esté activa.
+    if usuario["estatus"] != "verificada":
+        raise HTTPException(
+            status_code=400,
+            detail="La cuenta no ha sido verificada. Revisa tu correo."
+        )
+
+    # 4. Crear el token de acceso JWT.
+    # Guardamos el correo y el id_empresa en el token para usarlo después.
+    access_token_data = {
+        "sub": usuario["correo"],
+        "id_empresa": usuario["id_empresa"]
+    }
+    access_token = crear_access_token(data=access_token_data)
+
+    # 5. Devolver el token.
+    return {"access_token": access_token, "token_type": "bearer"}
