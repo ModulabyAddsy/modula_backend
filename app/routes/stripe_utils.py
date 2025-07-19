@@ -13,7 +13,7 @@ router = APIRouter()
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 # ID de precio para el plan mensual de Modula
-MODULA_PRICE_ID = os.getenv("STRIPE_MODULA_PRICE_ID")  # Ej: "price_1Rm7MLPJk1pnp1WZnstS3BEZ"
+MODULA_PRICE_ID = os.getenv("STRIPE_PRICE_ID")  # Ej: "price_1Rm7MLPJk1pnp1WZnstS3BEZ"
 
 # === Modelo para recibir datos del cliente ===
 class DatosSuscripcion(BaseModel):
