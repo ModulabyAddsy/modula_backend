@@ -1,4 +1,4 @@
-# app/routes/stripe.py
+# app/routes/stripe_utils.py
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 import stripe
@@ -36,29 +36,35 @@ async def crear_intento_suscripcion(data: DatosSuscripcion):
             }
         )
 
-        # 2. Crear sesión de pago (Checkout)
-        checkout_session = stripe.checkout.Session.create(
-            customer=cliente.id,
-            payment_method_types=["card"],
-            line_items=[
+        # 2. Construir argumentos para crear sesión
+        session_args = {
+            "customer": cliente.id,
+            "payment_method_types": ["card"],
+            "line_items": [
                 {
                     "price": MODULA_PRICE_ID,
                     "quantity": 1,
                 }
             ],
-            mode="subscription",
-            success_url="https://modula-backend.onrender.com/exito",
-            cancel_url="https://modula-backend.onrender.com/cancelado",
-            metadata={
+            "mode": "subscription",
+            "success_url": "https://modula-backend.onrender.com/exito",
+            "cancel_url": "https://modula-backend.onrender.com/cancelado",
+            "metadata": {
                 "id_terminal": data.id_terminal,
                 "aplica_prueba": str(data.aplica_prueba).lower(),
                 "correo": data.correo,
                 "nombre_completo": data.nombre_completo
-            },
-            subscription_data={
-                "trial_period_days": 14 if data.aplica_prueba else None
-            } if data.aplica_prueba else {}
-        )
+            }
+        }
+
+        # Agregar periodo de prueba solo si aplica
+        if data.aplica_prueba:
+            session_args["subscription_data"] = {
+                "trial_period_days": 14
+            }
+
+        # 3. Crear sesión de pago (Checkout)
+        checkout_session = stripe.checkout.Session.create(**session_args)
 
         return {"url_checkout": checkout_session.url}
 
