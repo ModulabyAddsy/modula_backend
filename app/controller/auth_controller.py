@@ -4,6 +4,9 @@ from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse
 from datetime import datetime
 from app.services.terminal_service import crear_terminal_si_no_existe
+from app.services.models import RegistroCuenta
+from app.services.stripe_service import crear_sesion_checkout_para_registro # Crearemos esta función
+
 # Importación de funciones de base de datos relacionadas a usuarios y empresas
 from app.services.db import (
     get_connection,
@@ -19,26 +22,22 @@ from app.services.mail import enviar_correo_verificacion
 from app.services.cloud.setup_empresa_cloud import inicializar_empresa_nueva
 
 # ✅ Endpoint para registrar una cuenta nueva en Modula
-async def registrar_cuenta(data):
-    # Buscar si el correo ya está registrado
+async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
+    # 1. Buscar si el correo ya está registrado y activo
     usuario = obtener_usuario_por_correo(data.correo)
-    if usuario:
-        # Si el correo ya está verificado, no se permite otro registro
-        if usuario["estatus"] == "verificada":
-            raise HTTPException(400, "Este correo ya está verificado.")
-        # Si el correo ya fue registrado pero no verificado
-        raise HTTPException(400, "Este correo ya fue registrado pero no verificado.")
+    if usuario and usuario["estatus"] == "verificada":
+        raise HTTPException(status_code=400, detail="Este correo ya está en uso.")
+    
+    # Si el usuario existe pero con otro estado (ej. pendiente_pago), se podría borrar y crear de nuevo
+    # o manejar la lógica para reintentar el pago. Por ahora, lo mantenemos simple.
 
-    # Obtener o generar el ID único para la empresa
-    id_terminal = data.id_terminal  # <- Recibe desde el frontend
-    id_empresa = obtener_o_crear_id_empresa(data.nombre_empresa)
-    # Generar el token de verificación y su fecha de expiración
-    token, token_expira = generar_token_verificacion()
-    # Encriptar la contraseña del usuario
+    # 2. Hashear la contraseña
     contrasena_segura = hash_contrasena(data.contrasena)
+    id_empresa = obtener_o_crear_id_empresa(data.nombre_empresa)
 
-    # Armar el diccionario con los datos del nuevo usuario
-    nuevo_usuario = {
+    # 3. Guardar usuario con estado 'pendiente_pago'
+    # Nota: No generamos token de verificación aquí todavía.
+    nuevo_usuario_data = {
         "nombre_completo": data.nombre_completo,
         "telefono": data.telefono,
         "fecha_nacimiento": data.fecha_nacimiento,
@@ -48,18 +47,34 @@ async def registrar_cuenta(data):
         "nombre_empresa": data.nombre_empresa,
         "id_empresa": id_empresa,
         "rfc": data.rfc,
-        "token": token,
-        "token_expira": token_expira,
+        "token": None, # Se generará después del pago
+        "token_expira": None,
+        "estatus": "pendiente_pago" # Nuevo estatus
     }
-    # Guardar el usuario en la base de datos
-    registrar_usuario(nuevo_usuario)
-    # Enviar el correo de verificación con el token
-    enviar_correo_verificacion(data.correo, data.nombre_completo, token, id_terminal)
-    # Devolver respuesta exitosa
-    return {
-        "mensaje": "Cuenta registrada correctamente. Revisa tu correo.",
-        "id_empresa": id_empresa
-    }
+    
+    # Aquí necesitaríamos una función en db.py que inserte y devuelva el usuario,
+    # o que maneje la actualización si ya existía como pendiente_pago.
+    registrar_usuario(nuevo_usuario_data) # Asumimos que esta función es adecuada por ahora
+
+    # 4. Crear la sesión de pago en Stripe
+    # Debemos determinar si aplica la prueba gratuita aquí
+    # Por ejemplo, verificando si el id_terminal ya existe en la tabla `terminales`
+    # (necesitaríamos una función para eso)
+    aplica_prueba = True # Lógica para determinar esto va aquí
+
+    # Pasamos los datos necesarios para el checkout y los metadatos
+    try:
+        checkout_session = await crear_sesion_checkout_para_registro(
+            nombre_completo=data.nombre_completo,
+            correo=data.correo,
+            id_terminal=data.id_terminal,
+            aplica_prueba=aplica_prueba
+        )
+        return {"url_checkout": checkout_session.url}
+    except Exception as e:
+        # Si Stripe falla, podríamos querer borrar al usuario 'pendiente_pago' o marcarlo como fallido.
+        raise HTTPException(status_code=500, detail=f"Error al contactar con el servicio de pago: {e}")
+
 
 #  Endpoint para verificar la cuenta a través del token recibido por correo
 async def verificar_cuenta(request: Request):

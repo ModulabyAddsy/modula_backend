@@ -101,5 +101,23 @@ def registrar_usuario(data: dict):
         "pendiente"
     ))
 
+def actualizar_usuario_para_verificacion(correo: str, token: str, token_expira):
+    """
+    Actualiza el estado del usuario a 'pendiente' y guarda su token de verificación.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE usuarios
+        SET estatus = 'pendiente',
+            token = %s,
+            token_expira = %s
+        WHERE correo = %s AND estatus = 'pendiente_pago';
+    """, (token, token_expira, correo))
+    conn.commit()
+    conn.close()
+    print(f"ℹ️ Usuario {correo} actualizado a 'pendiente' para verificación.")
+
+
     conn.commit()
     conn.close()

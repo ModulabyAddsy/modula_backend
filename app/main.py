@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import auth, terminal, webhook_controller
-from app.routes import stripe_utils  # ✅ Importa el módulo que contiene el endpoint /crear-intento-suscripcion
+from app.services import stripe_service  # ✅ Importa el módulo que contiene el endpoint /crear-intento-suscripcion
 from app.services.estructura_db import verificar_y_actualizar_estructura
 
 app = FastAPI(title="Modula Backend", version="1.0.0")
@@ -20,7 +20,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(terminal.router)
 app.include_router(webhook_controller.router)
-app.include_router(stripe_utils.router)  # ✅ Incluye el router de Stripe
+app.include_router(stripe_service.router)  # ✅ Incluye el router de Stripe
 
 @app.get("/verificar-stripe")
 def verificar_stripe():
