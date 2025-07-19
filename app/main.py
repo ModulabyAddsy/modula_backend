@@ -17,13 +17,18 @@ app = FastAPI(title="Modula Backend", version="1.1.0")
 
 # --- Middleware de CORS ---
 # Permite que tu frontend (el software Modula o la página de prueba) se comunique con el backend.
+# Esta configuración es más explícita para asegurar la comunicación
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En producción, es más seguro limitar esto a dominios específicos.
+    # Permitimos '*' por ahora para las pruebas. 
+    # En producción, podrías cambiarlo a la URL de tu sitio web oficial si lo tienes.
+    allow_origins=["*"], 
     allow_credentials=True,
-    allow_methods=["*"],
+    # Permitimos explícitamente todos los métodos y cabeceras comunes.
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
 
 # --- Evento de Arranque (Startup) ---
 # Estas funciones se ejecutarán una sola vez cuando Render inicie el servidor.
