@@ -4,18 +4,14 @@ import os
 
 router = APIRouter()
 
-@router.on_event("startup")
-def configurar_stripe():
-    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
-    if not stripe.api_key:
-        raise RuntimeError("❌ No se encontró STRIPE_SECRET_KEY")
-    print("✅ Clave secreta de Stripe cargada correctamente.")
-
 @router.post("/webhook-stripe")
 async def stripe_webhook(request: Request, stripe_signature: str = Header(None)):
+    # Configurar las claves de Stripe en tiempo de ejecución
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
     endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
-    if not endpoint_secret:
-        raise HTTPException(status_code=500, detail="Webhook secret no configurado")
+
+    if not stripe.api_key or not endpoint_secret:
+        raise HTTPException(status_code=500, detail="Stripe keys not configured")
 
     try:
         payload = await request.body()
