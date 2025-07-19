@@ -14,6 +14,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/verificar-stripe")
+def verificar_stripe():
+    import os
+    return {
+        "stripe_key_corta": os.getenv("STRIPE_SECRET_KEY")[:10] + "...",
+        "webhook_corta": os.getenv("STRIPE_WEBHOOK_SECRET")[:10] + "..."
+    }
+
 # Cargar rutas principales
 app.include_router(auth.router)
 app.include_router(terminal.router)
