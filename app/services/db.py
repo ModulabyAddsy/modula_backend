@@ -59,7 +59,6 @@ def obtener_o_crear_id_empresa(nombre_empresa):
     conn = get_connection()
     cur = conn.cursor()
 
-    # Buscar si ya existe un id_empresa para ese nombre de empresa
     cur.execute("SELECT id_empresa FROM usuarios WHERE nombre_empresa = %s LIMIT 1;", (nombre_empresa,))
     empresa_existente = cur.fetchone()
 
@@ -67,39 +66,65 @@ def obtener_o_crear_id_empresa(nombre_empresa):
         conn.close()
         return empresa_existente['id_empresa']
 
-    # Si no existe, generar nuevo ID MOD_EMP_####
     cur.execute("SELECT COUNT(DISTINCT id_empresa) FROM usuarios;")
     total_empresas = cur.fetchone()["count"]
     nuevo_id = f"MOD_EMP_{1001 + total_empresas}"
-
     conn.close()
     return nuevo_id
 
-# Registra un nuevo usuario con datos completos
+# --- VERSIÓN CORREGIDA Y ÚNICA DE registrar_usuario ---
 def registrar_usuario(data: dict):
+    """
+    Inserta un nuevo usuario en la base de datos y devuelve su ID.
+    Devuelve None si la inserción falla.
+    """
     conn = get_connection()
     cur = conn.cursor()
+    nuevo_id = None
+    estatus = data.get("estatus", "pendiente_pago")
 
-    cur.execute("""
-        INSERT INTO usuarios (
-            nombre_completo, telefono, fecha_nacimiento, correo,
-            correo_recuperacion, contrasena, nombre_empresa,
-            id_empresa, rfc, token, token_expira, estatus
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """, (
-        data["nombre_completo"],
-        data["telefono"],
-        data["fecha_nacimiento"],
-        data["correo"],
-        data["correo_recuperacion"],
-        data["contrasena"],
-        data["nombre_empresa"],
-        data["id_empresa"],
-        data["rfc"],
-        data["token"],
-        data["token_expira"],
-        "pendiente"
-    ))
+    try:
+        cur.execute("""
+            INSERT INTO usuarios (
+                nombre_completo, telefono, fecha_nacimiento, correo,
+                correo_recuperacion, contrasena, nombre_empresa,
+                id_empresa, rfc, token, token_expira, estatus
+            ) VALUES (
+                %(nombre_completo)s, %(telefono)s, %(fecha_nacimiento)s, %(correo)s,
+                %(correo_recuperacion)s, %(contrasena)s, %(nombre_empresa)s,
+                %(id_empresa)s, %(rfc)s, %(token)s, %(token_expira)s, %(estatus)s
+            ) RETURNING id;
+        """, {
+            "nombre_completo": data["nombre_completo"],
+            "telefono": data["telefono"],
+            "fecha_nacimiento": data["fecha_nacimiento"],
+            "correo": data["correo"],
+            "correo_recuperacion": data.get("correo_recuperacion"),
+            "contrasena": data["contrasena"],
+            "nombre_empresa": data["nombre_empresa"],
+            "id_empresa": data["id_empresa"],
+            "rfc": data.get("rfc"),
+            "token": data.get("token"),
+            "token_expira": data.get("token_expira"),
+            "estatus": estatus
+        })
+        # Obtenemos el ID del registro recién insertado
+        resultado = cur.fetchone()
+        if resultado:
+            nuevo_id = resultado['id']
+        
+        conn.commit()
+        print(f"✅ Usuario '{data['correo']}' insertado con ID: {nuevo_id}. Commit realizado.")
+    
+    except Exception as e:
+        conn.rollback()
+        print(f"❌ ERROR al registrar usuario en la BD: {e}")
+        # No relanzamos el error, simplemente devolveremos None
+    
+    finally:
+        conn.close()
+        
+    return nuevo_id
 
 def actualizar_usuario_para_verificacion(correo: str, token: str, token_expira):
     """
@@ -117,7 +142,3 @@ def actualizar_usuario_para_verificacion(correo: str, token: str, token_expira):
     conn.commit()
     conn.close()
     print(f"ℹ️ Usuario {correo} actualizado a 'pendiente' para verificación.")
-
-
-    conn.commit()
-    conn.close()

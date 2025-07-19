@@ -35,8 +35,7 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
     contrasena_segura = hash_contrasena(data.contrasena)
     id_empresa = obtener_o_crear_id_empresa(data.nombre_empresa)
 
-    # 3. Guardar usuario con estado 'pendiente_pago'
-    # Nota: No generamos token de verificación aquí todavía.
+    # 3. Preparar los datos del nuevo usuario
     nuevo_usuario_data = {
         "nombre_completo": data.nombre_completo,
         "telefono": data.telefono,
@@ -47,22 +46,29 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
         "nombre_empresa": data.nombre_empresa,
         "id_empresa": id_empresa,
         "rfc": data.rfc,
-        "token": None, # Se generará después del pago
+        "token": None,
         "token_expira": None,
-        "estatus": "pendiente_pago" # Nuevo estatus
+        "estatus": "pendiente_pago"
     }
     
-    # Aquí necesitaríamos una función en db.py que inserte y devuelva el usuario,
-    # o que maneje la actualización si ya existía como pendiente_pago.
-    registrar_usuario(nuevo_usuario_data) # Asumimos que esta función es adecuada por ahora
+    # --- VERIFICACIÓN DE INSERCIÓN ---
+    # La función registrar_usuario ahora devuelve el ID del nuevo registro o None si falla.
+    id_nuevo_usuario = registrar_usuario(nuevo_usuario_data)
+
+    # Si el ID es None, significa que la inserción falló. Forzamos un error.
+    if id_nuevo_usuario is None:
+        print("🔥🔥🔥 La inserción en la base de datos falló silenciosamente. No se obtuvo ID.")
+        raise HTTPException(
+            status_code=500, 
+            detail="Error crítico: No se pudo guardar el registro de usuario en la base de datos."
+        )
+    
+    print(f"➡️ Usuario pre-registrado con ID: {id_nuevo_usuario}. Procediendo a crear pago en Stripe.")
 
     # 4. Crear la sesión de pago en Stripe
-    # Debemos determinar si aplica la prueba gratuita aquí
-    # Por ejemplo, verificando si el id_terminal ya existe en la tabla `terminales`
-    # (necesitaríamos una función para eso)
-    aplica_prueba = True # Lógica para determinar esto va aquí
+    # Lógica para determinar si aplica la prueba gratuita (puedes mejorarla después)
+    aplica_prueba = True 
 
-    # Pasamos los datos necesarios para el checkout y los metadatos
     try:
         checkout_session = await crear_sesion_checkout_para_registro(
             nombre_completo=data.nombre_completo,
@@ -73,6 +79,8 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
         return {"url_checkout": checkout_session.url}
     except Exception as e:
         # Si Stripe falla, podríamos querer borrar al usuario 'pendiente_pago' o marcarlo como fallido.
+        # Por ahora, solo lanzamos el error.
+        print(f"🔥🔥🔥 Falló la creación de la sesión de Stripe: {e}")
         raise HTTPException(status_code=500, detail=f"Error al contactar con el servicio de pago: {e}")
 
 
