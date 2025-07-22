@@ -63,8 +63,15 @@ def crear_empresa_y_usuario_inicial(data: dict):
             )
             empresa_id = cur.fetchone()['id']
 
+            # --- CORRECCIÓN CRÍTICA AQUÍ ---
+            # Se añaden las columnas 'token' y 'token_expira' con valores NULL en la inserción.
             cur.execute(
-                "INSERT INTO usuarios_admin (id_empresa, nombre_completo, telefono, correo, correo_recuperacion, contrasena_hash, estatus, fecha_nacimiento, token, token_expira) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL) RETURNING id;",
+                """
+                INSERT INTO usuarios_admin 
+                    (id_empresa, nombre_completo, telefono, correo, correo_recuperacion, contrasena_hash, estatus, fecha_nacimiento, token, token_expira) 
+                VALUES 
+                    (%s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL) RETURNING id;
+                """,
                 (empresa_id, data['nombre_completo'], data['telefono'], data['correo'], data.get('correo_recuperacion'), data['contrasena_hash'], 'pendiente_pago', data['fecha_nacimiento'])
             )
             usuario_id = cur.fetchone()['id']
