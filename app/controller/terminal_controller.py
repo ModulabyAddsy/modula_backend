@@ -1,56 +1,34 @@
-#terminal_controller.py
+# app/controller/terminal_controller.py
+from fastapi import APIRouter, Depends, HTTPException
+# (Importaremos modelos y funciones de seguridad cuando los necesitemos)
 
-from fastapi import APIRouter, HTTPException
-from app.services.db import get_connection
+# El prefijo y las etiquetas se definen en el archivo de rutas (terminal.py)
+router = APIRouter()
 
-router = APIRouter(prefix="/terminal", tags=["Terminales"])
+# --- Endpoint de Placeholder ---
+# La lógica de 'registrar terminal' ahora está integrada en la creación de empleados
+# y en el flujo de sincronización inicial del software Modula.
+# Dejamos este endpoint como base para futuras funcionalidades.
 
-@router.post("/registrar")
-def registrar_terminal(id_terminal: str, id_empresa: str, ip_terminal: str):
-    conn = get_connection()
-    cur = conn.cursor()
+@router.get("/status")
+def get_terminal_status():
+    """
+    Endpoint de placeholder para verificar el estado del servicio de terminales.
+    En el futuro, aquí podríamos añadir endpoints para:
+    - Listar terminales activas por sucursal.
+    - Desactivar una terminal remotamente.
+    - Ver el último estado de sincronización de una terminal.
+    """
+    return {"status": "ok", "message": "Servicio de terminales activo (lógica pendiente de implementación v2)."}
 
-    # 1. ¿Ya existe esta terminal?
-    cur.execute("""
-        SELECT * FROM terminales 
-        WHERE id_terminal = %s AND id_empresa = %s;
-    """, (id_terminal, id_empresa))
-    terminal = cur.fetchone()
-    
-    if terminal:
-        conn.close()
-        return {"mensaje": "Terminal ya registrada", "datos": terminal}
+# Ejemplo de cómo podría ser un futuro endpoint protegido:
+#
+# from app.services.security import get_current_admin_user
+#
+# @router.get("/list/{id_sucursal}")
+# def list_terminals_in_branch(id_sucursal: int, current_user: dict = Depends(get_current_admin_user)):
+#     # Esta función solo se ejecutaría si el token JWT del admin es válido.
+#     # Aquí iría la lógica para consultar la base de datos y devolver las terminales
+#     # (o empleados) asociados a esa sucursal.
+#     return {"message": f"Listando terminales para la sucursal {id_sucursal} de la empresa {current_user['id_empresa_addsy']}"}
 
-    # 2. ¿Hay otra terminal de esta empresa con esta IP?
-    cur.execute("""
-        SELECT numero_sucursal FROM terminales 
-        WHERE id_empresa = %s AND ip_terminal = %s LIMIT 1;
-    """, (id_empresa, ip_terminal))
-    sucursal_existente = cur.fetchone()
-
-    if sucursal_existente:
-        numero_sucursal = sucursal_existente["numero_sucursal"]
-    else:
-        # 3. Contar sucursales existentes para esta empresa
-        cur.execute("""
-            SELECT COUNT(DISTINCT numero_sucursal) FROM terminales WHERE id_empresa = %s;
-        """, (id_empresa,))
-        total = cur.fetchone()["count"]
-        numero_sucursal = f"SUC{str(total + 1).zfill(2)}"
-
-    # 4. Registrar nueva terminal
-    cur.execute("""
-        INSERT INTO terminales (id_terminal, id_empresa, numero_sucursal, ip_terminal, activa)
-        VALUES (%s, %s, %s, %s, TRUE);
-    """, (id_terminal, id_empresa, numero_sucursal, ip_terminal))
-
-    conn.commit()
-    conn.close()
-
-    return {
-        "mensaje": "✅ Terminal registrada correctamente",
-        "id_terminal": id_terminal,
-        "id_empresa": id_empresa,
-        "numero_sucursal": numero_sucursal,
-        "ip_detectada": ip_terminal
-    }
