@@ -4,8 +4,9 @@ import stripe
 import os
 from dotenv import load_dotenv
 
-# Importar las funciones que necesitaremos de otros servicios
-from app.services.db import obtener_usuario_por_correo, actualizar_usuario_para_verificacion
+# --- CORRECCIÓN DE IMPORTACIONES ---
+# Importamos las funciones con sus nuevos nombres desde los servicios correctos.
+from app.services.db import buscar_usuario_admin_por_correo, actualizar_estatus_admin_para_verificacion
 from app.services.utils import generar_token_verificacion
 from app.services.mail import enviar_correo_verificacion
 
@@ -37,26 +38,26 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
             return {"status": "error", "detail": "Missing metadata"}
 
         correo = metadata["correo_usuario"]
-        id_terminal = metadata.get("id_terminal", "") # Obtenemos el id_terminal
+        id_terminal = metadata.get("id_terminal", "")
 
-        # 1. Buscar al usuario en la base de datos
-        usuario = obtener_usuario_por_correo(correo)
+        # 1. Buscar al usuario en la base de datos (usando la nueva función)
+        usuario = buscar_usuario_admin_por_correo(correo)
         if not usuario:
-            print(f"❌ Error: Usuario con correo {correo} no encontrado en la BD.")
+            print(f"❌ Error: Usuario admin con correo {correo} no encontrado en la BD.")
             return {"status": "error", "detail": "User not found"}
 
         # 2. Verificar que el usuario esté esperando el pago
         if usuario["estatus"] == "pendiente_pago":
-            # 3. Generar token de verificación y actualizar usuario
+            # 3. Generar token de verificación y actualizar usuario (usando la nueva función)
             token, token_expira = generar_token_verificacion()
-            actualizar_usuario_para_verificacion(correo, token, token_expira)
+            actualizar_estatus_admin_para_verificacion(correo, token, token_expira)
             
             # 4. Enviar el correo de verificación
             enviar_correo_verificacion(
                 destinatario=correo,
                 nombre_usuario=usuario["nombre_completo"],
                 token=token,
-                id_terminal=id_terminal # Pasamos el id_terminal al correo
+                id_terminal=id_terminal
             )
             print(f"✅ Pago completado para {correo}. Correo de verificación enviado.")
         else:
