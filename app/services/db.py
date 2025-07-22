@@ -10,7 +10,7 @@ load_dotenv()
 def get_connection():
     """Establece la conexión con la base de datos PostgreSQL en Render."""
     try:
-        db_url = os.getenv("External_Database_URL")
+        db_url = os.getenv("DATABASE_URL")
         if not db_url:
             print("🔥🔥 ERROR: La variable de entorno DATABASE_URL no está definida.")
             return None
