@@ -31,19 +31,8 @@ app.include_router(auth.router, tags=["Autenticación"])
 app.include_router(terminal.router, tags=["Terminales"])
 app.include_router(stripe_routes.router, tags=["Stripe Webhooks"])
 
-# --- Endpoints de Verificación ---
-
+# --- Endpoint Raíz ---
 @app.get("/")
 def root():
     """Endpoint principal para verificar que el backend está activo."""
     return {"message": "Modula backend v2 activo 🚀"}
-
-@app.get("/verificar-variables")
-def verificar_variables():
-    """Endpoint de depuración para verificar que las variables de entorno clave están cargadas."""
-    db_url = os.getenv("DATABASE_URL")
-    stripe_key = os.getenv("STRIPE_SECRET_KEY")
-    return {
-        "database_url_cargada": bool(db_url),
-        "stripe_key_cargada": bool(stripe_key),
-    }

@@ -3,16 +3,19 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
-from datetime import datetime # <-- ¡AQUÍ ESTÁ LA CORRECCIÓN!
+from datetime import datetime
 
 load_dotenv()
 
 def get_connection():
     """Establece la conexión con la base de datos PostgreSQL en Render."""
     try:
-        # La URL completa es más robusta para la conexión
         db_url = os.getenv("DATABASE_URL")
-        if db_url and "sslmode" not in db_url:
+        if not db_url:
+            print("🔥🔥 ERROR: La variable de entorno DATABASE_URL no está definida.")
+            return None
+            
+        if "sslmode" not in db_url:
             db_url += "?sslmode=require"
             
         conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor)
@@ -50,26 +53,22 @@ def crear_empresa_y_usuario_inicial(data: dict):
 
     try:
         with conn.cursor() as cur:
-            # Generar el ID legible para la empresa
             cur.execute("SELECT COUNT(*) FROM empresas;")
             total_empresas = cur.fetchone()['count']
             id_empresa_addsy = f"MOD_EMP_{1001 + total_empresas}"
 
-            # 1. Crear la Empresa
             cur.execute(
                 "INSERT INTO empresas (id_empresa_addsy, nombre_empresa, rfc, estatus_suscripcion) VALUES (%s, %s, %s, %s) RETURNING id;",
                 (id_empresa_addsy, data['nombre_empresa'], data.get('rfc'), 'pendiente_pago')
             )
             empresa_id = cur.fetchone()['id']
 
-            # 2. Crear el Usuario Administrador
             cur.execute(
-                "INSERT INTO usuarios_admin (id_empresa, nombre_completo, telefono, correo, correo_recuperacion, contrasena_hash, estatus, fecha_nacimiento) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;",
+                "INSERT INTO usuarios_admin (id_empresa, nombre_completo, telefono, correo, correo_recuperacion, contrasena_hash, estatus, fecha_nacimiento, token, token_expira) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL) RETURNING id;",
                 (empresa_id, data['nombre_completo'], data['telefono'], data['correo'], data.get('correo_recuperacion'), data['contrasena_hash'], 'pendiente_pago', data['fecha_nacimiento'])
             )
             usuario_id = cur.fetchone()['id']
 
-            # 3. Crear la primera Sucursal por defecto
             cur.execute(
                 "INSERT INTO sucursales (id_empresa, id_sucursal_addsy, nombre) VALUES (%s, %s, %s);",
                 (empresa_id, 'SUC01', 'Sucursal Principal')
@@ -111,18 +110,15 @@ def verificar_token_y_activar_admin(token: str):
 
     try:
         with conn.cursor() as cur:
-            # 1. Buscar el usuario por el token
             cur.execute("SELECT * FROM usuarios_admin WHERE token = %s;", (token,))
             usuario = cur.fetchone()
 
             if not usuario:
                 return "invalid_token"
             
-            # 2. Verificar si el token ha expirado
-            if usuario["token_expira"] < datetime.now(usuario["token_expira"].tzinfo):
+            if not usuario["token_expira"] or usuario["token_expira"] < datetime.now(usuario["token_expira"].tzinfo):
                 return "expired_token"
 
-            # 3. Activar el usuario y limpiar el token
             cur.execute(
                 "UPDATE usuarios_admin SET estatus = 'verificada', token = NULL, token_expira = NULL WHERE id = %s RETURNING *;",
                 (usuario["id"],)
