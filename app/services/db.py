@@ -21,7 +21,7 @@ def get_connection():
         conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor)
         return conn
     except (Exception, psycopg2.OperationalError) as e:
-        print(f"🔥🔥 ERROR DE CONEXIÓN A LA BASE DE DATOS ES NECESARIO REVISAR: {e}")
+        print(f"🔥🔥 ERROR DE CONEXIÓN A LA BASE DE DATOS: {e}")
         return None
 
 # --- FUNCIONES PARA LA ARQUITECTURA v2 ---
