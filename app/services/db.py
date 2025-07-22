@@ -1,7 +1,7 @@
 # app/services/db.py
 import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg 
+from psycopg.rows import dict_row
 from dotenv import load_dotenv
 from datetime import datetime
 
@@ -18,9 +18,9 @@ def get_connection():
         if "sslmode" not in db_url:
             db_url += "?sslmode=require"
             
-        conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+        conn = psycopg.connect(db_url, row_factory=dict_row)
         return conn
-    except (Exception, psycopg2.OperationalError) as e:
+    except (Exception, psycopg.OperationalError) as e:
         print(f"🔥🔥 ERROR DE CONEXIÓN A LA BASE DE DATOS: {e}")
         return None
 
