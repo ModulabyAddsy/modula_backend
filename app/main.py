@@ -3,12 +3,11 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Importamos los enrutadores (endpoints) de la aplicación.
-from app.routes import auth, terminal, stripe_routes 
+# 👉 Importamos los nuevos enrutadores
+from app.routes import auth, terminal, stripe_routes, suscripcion_routes
 
 app = FastAPI(title="Modula Backend v2", version="2.0.0")
 
-# Middleware de CORS para permitir la comunicación desde el software cliente
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,22 +16,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Evento de Arranque (Startup) ---
-# Ya no creamos tablas aquí; eso se maneja con scripts de migración para
-# tener un mayor control sobre la estructura de la base de datos.
 @app.on_event("startup")
 def on_startup():
-    print("🚀 Servidor iniciando... Conexión a la base de datos gestionada por endpoints.")
+    print("🚀 Servidor iniciando...")
     print("✅ ¡Backend listo para recibir peticiones!")
 
 # --- Registro de Rutas (Endpoints) ---
-# Incluimos los diferentes grupos de endpoints en la aplicación principal.
-app.include_router(auth.router, tags=["Autenticación"])
-app.include_router(terminal.router, tags=["Terminales"])
-app.include_router(stripe_routes.router, tags=["Stripe Webhooks"])
+app.include_router(auth.router, prefix="/auth", tags=["Autenticación"])
+app.include_router(terminal.router, prefix="/terminales", tags=["Terminales"])
+app.include_router(stripe_routes.router, prefix="/stripe", tags=["Stripe Webhooks"])
+# 👉 Añadimos el nuevo grupo de rutas para suscripciones
+app.include_router(suscripcion_routes.router, prefix="/suscripciones", tags=["Suscripciones"])
 
-# --- Endpoint Raíz ---
+
 @app.get("/")
 def root():
-    """Endpoint principal para verificar que el backend está activo."""
     return {"message": "Modula backend v2 activo 🚀"}

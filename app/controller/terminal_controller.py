@@ -1,34 +1,17 @@
 # app/controller/terminal_controller.py
-from fastapi import APIRouter, Depends, HTTPException
-# (Importaremos modelos y funciones de seguridad cuando los necesitemos)
+from fastapi import HTTPException
+from app.services.db import get_terminales_por_cuenta, crear_terminal
+from app.services.models import TerminalCreate
 
-# El prefijo y las etiquetas se definen en el archivo de rutas (terminal.py)
-router = APIRouter()
+def get_mis_terminales(current_user: dict):
+    """Obtiene las terminales del usuario actualmente autenticado."""
+    id_cuenta = current_user.get('id')
+    return get_terminales_por_cuenta(id_cuenta)
 
-# --- Endpoint de Placeholder ---
-# La lógica de 'registrar terminal' ahora está integrada en la creación de empleados
-# y en el flujo de sincronización inicial del software Modula.
-# Dejamos este endpoint como base para futuras funcionalidades.
-
-@router.get("/status")
-def get_terminal_status():
-    """
-    Endpoint de placeholder para verificar el estado del servicio de terminales.
-    En el futuro, aquí podríamos añadir endpoints para:
-    - Listar terminales activas por sucursal.
-    - Desactivar una terminal remotamente.
-    - Ver el último estado de sincronización de una terminal.
-    """
-    return {"status": "ok", "message": "Servicio de terminales activo (lógica pendiente de implementación v2)."}
-
-# Ejemplo de cómo podría ser un futuro endpoint protegido:
-#
-# from app.services.security import get_current_admin_user
-#
-# @router.get("/list/{id_sucursal}")
-# def list_terminals_in_branch(id_sucursal: int, current_user: dict = Depends(get_current_admin_user)):
-#     # Esta función solo se ejecutaría si el token JWT del admin es válido.
-#     # Aquí iría la lógica para consultar la base de datos y devolver las terminales
-#     # (o empleados) asociados a esa sucursal.
-#     return {"message": f"Listando terminales para la sucursal {id_sucursal} de la empresa {current_user['id_empresa_addsy']}"}
-
+def registrar_nueva_terminal(terminal_data: TerminalCreate, current_user: dict):
+    """Registra una nueva terminal para la cuenta del usuario."""
+    id_cuenta = current_user.get('id')
+    nueva_terminal = crear_terminal(id_cuenta, terminal_data.dict())
+    if not nueva_terminal:
+        raise HTTPException(status_code=500, detail="Error al registrar la nueva terminal en la base de datos.")
+    return nueva_terminal
