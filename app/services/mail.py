@@ -10,12 +10,11 @@ load_dotenv()
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 
-# 👉 Función actualizada para aceptar más parámetros para el enlace
 def enviar_correo_verificacion(destinatario, nombre_usuario, token, id_terminal, id_stripe_session):
     """Envía un correo con un enlace de verificación que ahora incluye todos los IDs necesarios."""
 
-    # 👉 Enlace ahora contiene todo lo necesario para el paso de verificación
-    enlace = f"https://modula-backend.onrender.com/verificar-cuenta?token={token}&id_terminal={id_terminal}&session_id={id_stripe_session}"
+    # 👉 CORRECCIÓN AQUÍ: Se añade el prefijo "/auth" a la URL del enlace.
+    enlace = f"https://modula-backend.onrender.com/auth/verificar-cuenta?token={token}&id_terminal={id_terminal}&session_id={id_stripe_session}"
 
     asunto = "Verifica tu cuenta Addsy 🚀"
     cuerpo_html = f"""
