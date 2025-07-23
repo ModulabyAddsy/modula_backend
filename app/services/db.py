@@ -1,14 +1,12 @@
 # app/services/db.py
 import os
-import psycopg 
+import psycopg
 from psycopg.rows import dict_row
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from uuid import UUID
 
-# ... (la función get_connection y las de autenticación no cambian) ...
-
-# (pegar aquí las funciones existentes de la respuesta anterior: get_connection, buscar_cuenta_addsy_por_correo, etc.)
+# (Las funciones get_connection y buscar_cuenta_addsy_por_correo no cambian)
 def get_connection():
     try:
         db_url = os.getenv("DATABASE_URL") + "?sslmode=require"
@@ -21,6 +19,7 @@ def get_connection():
 def buscar_cuenta_addsy_por_correo(correo: str):
     conn = get_connection()
     if not conn: return None
+    # 👉 Query actualizada para unir el id_empresa_addsy
     query = "SELECT * FROM cuentas_addsy WHERE correo = %s;"
     try:
         with conn.cursor() as cur:
@@ -30,12 +29,99 @@ def buscar_cuenta_addsy_por_correo(correo: str):
     finally:
         if conn: conn.close()
 
-# ... (resto de funciones de auth)
+# 👉 FUNCIÓN RENOMBRADA para que coincida con el controlador
+def crear_cuenta_addsy(data: dict):
+    """
+    Crea la cuenta Addsy directamente con todos los datos de la empresa.
+    """
+    conn = get_connection()
+    if not conn: return None
+    
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM cuentas_addsy;")
+            total_cuentas = cur.fetchone()['count']
+            id_empresa_addsy = f"MOD_EMP_{1001 + total_cuentas}"
+            
+            sql = """
+                INSERT INTO cuentas_addsy (
+                    id_empresa_addsy, nombre_empresa, rfc, nombre_completo, 
+                    telefono, correo, contrasena_hash, estatus_cuenta, fecha_nacimiento
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+            """
+            params = (
+                id_empresa_addsy, data['nombre_empresa'], data.get('rfc'), data['nombre_completo'],
+                data['telefono'], data['correo'], data['contrasena_hash'],
+                'pendiente_pago', data['fecha_nacimiento']
+            )
+            cur.execute(sql, params)
+            cuenta_id = cur.fetchone()['id']
+            conn.commit()
+            print(f"✅ Pre-registro de Cuenta ID:{cuenta_id} exitoso.")
+            return cuenta_id
+    except Exception as e:
+        conn.rollback()
+        print(f"🔥🔥 ERROR en transacción de creación de cuenta: {e}")
+        return None
+    finally:
+        if conn: conn.close()
 
-# --- 👉 Nuevas Funciones para Suscripciones ---
 
+# (El resto de las funciones de db.py permanecen igual)
+def actualizar_cuenta_para_verificacion(correo, token, token_expira):
+    conn = get_connection()
+    if not conn: return False
+    query = "UPDATE cuentas_addsy SET estatus_cuenta = 'pendiente_verificacion', token_recuperacion = %s, token_expira = %s WHERE correo = %s AND estatus_cuenta = 'pendiente_pago';"
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, (token, token_expira, correo))
+            updated_rows = cur.rowcount
+        conn.commit()
+        return updated_rows > 0
+    finally:
+        if conn: conn.close()
+
+def verificar_token_y_activar_cuenta(token):
+    conn = get_connection()
+    if not conn: return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM cuentas_addsy WHERE token_recuperacion = %s;", (token,))
+            cuenta = cur.fetchone()
+            if not cuenta: return "invalid_token"
+            if not cuenta["token_expira"] or cuenta["token_expira"] < datetime.now(cuenta["token_expira"].tzinfo): return "expired_token"
+            cur.execute("UPDATE cuentas_addsy SET estatus_cuenta = 'verificada', token_recuperacion = NULL, token_expira = NULL WHERE id = %s RETURNING *;", (cuenta["id"],))
+            cuenta_activada = cur.fetchone()
+            conn.commit()
+            return cuenta_activada
+    except Exception as e:
+        conn.rollback()
+        return None
+    finally:
+        if conn: conn.close()
+
+def activar_suscripcion_y_terminal(id_cuenta: int, id_terminal: str, id_stripe: str):
+    conn = get_connection()
+    if not conn: return False
+    try:
+        with conn.cursor() as cur:
+            fecha_vencimiento_prueba = datetime.utcnow() + timedelta(days=14)
+            cur.execute("INSERT INTO suscripciones_software (id_cuenta_addsy, software_nombre, estado_suscripcion, fecha_vencimiento) VALUES (%s, 'modula', 'prueba_gratis', %s)", (id_cuenta, fecha_vencimiento_prueba))
+            # 👉 Se usa id_cuenta como el foreign key que antes era id_empresa
+            cur.execute("INSERT INTO sucursales (id_empresa, nombre) VALUES (%s, %s) RETURNING id;", (id_cuenta, 'Sucursal Principal'))
+            sucursal_id = cur.fetchone()['id']
+            cur.execute("INSERT INTO modula_terminales (id_terminal, id_empresa, id_sucursal, nombre_terminal, activa) VALUES (%s, %s, %s, %s, true);", (id_terminal, id_cuenta, sucursal_id, 'Terminal Principal'))
+            cur.execute("UPDATE cuentas_addsy SET id_suscripcion_stripe = %s WHERE id = %s;", (id_stripe, id_cuenta))
+            conn.commit()
+            return True
+    except Exception as e:
+        conn.rollback()
+        return False
+    finally:
+        if conn: conn.close()
+        
+# (El resto de las funciones de db.py que agregamos antes para terminales y suscripciones)
 def get_suscripciones_por_cuenta(id_cuenta: int):
-    """Obtiene todas las suscripciones de una cuenta."""
     conn = get_connection()
     if not conn: return []
     query = "SELECT * FROM suscripciones_software WHERE id_cuenta_addsy = %s;"
@@ -47,10 +133,7 @@ def get_suscripciones_por_cuenta(id_cuenta: int):
     finally:
         if conn: conn.close()
 
-# --- 👉 Nuevas Funciones para Terminales ---
-
 def get_terminales_por_cuenta(id_cuenta: int):
-    """Obtiene todas las terminales asociadas a una cuenta."""
     conn = get_connection()
     if not conn: return []
     query = "SELECT * FROM modula_terminales WHERE id_empresa = %s;"
@@ -63,10 +146,8 @@ def get_terminales_por_cuenta(id_cuenta: int):
         if conn: conn.close()
 
 def crear_terminal(id_cuenta: int, terminal_data: dict):
-    """Crea un nuevo registro de terminal en la base de datos."""
     conn = get_connection()
     if not conn: return None
-    
     sql = """
         INSERT INTO modula_terminales 
             (id_terminal, id_empresa, id_sucursal, nombre_terminal, activa)
@@ -74,8 +155,8 @@ def crear_terminal(id_cuenta: int, terminal_data: dict):
         RETURNING *;
     """
     params = (
-        terminal_data['id_terminal'],
-        id_cuenta, # id_empresa ahora es el id de la cuenta
+        UUID(terminal_data['id_terminal']),
+        id_cuenta,
         terminal_data['id_sucursal'],
         terminal_data['nombre_terminal']
     )
