@@ -1,56 +1,55 @@
+# migrate_db.py
 import os
 import psycopg
+from dotenv import load_dotenv
 
-def migrate_and_delete_empresas():
+# Cargar variables de entorno (asegúrate de tener tu archivo .env)
+load_dotenv()
+
+def crear_tabla_sucursales():
     """
-    Refactoriza la BD para eliminar la tabla 'empresas', moviendo sus columnas
-    clave a 'cuentas_addsy' y actualizando las tablas dependientes.
+    Crea la tabla 'sucursales' en la base de datos si no existe,
+    con la estructura correcta vinculada a 'cuentas_addsy'.
     """
-    DATABASE_URL = "postgres://modula_db_user:yBJv2Jd4053Y1y4pscoRbSc0NtS04JV5@oregon-postgres.render.com/modula_db"
     conn = None
     try:
-        conn = psycopg.connect(DATABASE_URL)
+        # Obtener la URL de la base de datos y asegurar la conexión SSL
+        db_url = os.getenv("DATABASE_URL")
+        if not db_url:
+            raise Exception("La variable de entorno DATABASE_URL no está definida.")
+        if "sslmode" not in db_url:
+            db_url += "?sslmode=require"
+        
+        print("🔌 Conectando a la base de datos de Render...")
+        conn = psycopg.connect(db_url)
         cur = conn.cursor()
-        print("🔌 Conexión exitosa. Iniciando migración V3...")
+        print("✅ Conexión exitosa.")
 
-        # Paso 1: Añadir columnas de 'empresas' a 'cuentas_addsy'
-        print("--- [1/4] Alterando 'cuentas_addsy' para absorber columnas...")
-        cur.execute("""
-            ALTER TABLE cuentas_addsy
-            ADD COLUMN IF NOT EXISTS id_empresa_addsy VARCHAR(255),
-            ADD COLUMN IF NOT EXISTS id_suscripcion_stripe VARCHAR(255);
-        """)
+        # Comando SQL para crear la tabla
+        sql_command = """
+        CREATE TABLE IF NOT EXISTS sucursales (
+            id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            id_cuenta_addsy BIGINT NOT NULL REFERENCES cuentas_addsy(id) ON DELETE CASCADE,
+            nombre VARCHAR(255) NOT NULL,
+            fecha_creacion TIMESTAMPTZ DEFAULT NOW(),
+            id_sucursal_addsy VARCHAR(50)
+        );
+        """
 
-        # Paso 2: Migrar datos existentes (si los hay)
-        # Para un entorno limpio, este paso puede no ser necesario, pero es una buena práctica.
-        print("--- [2/4] Migrando datos de 'empresas' a 'cuentas_addsy'...")
-        cur.execute("""
-            UPDATE cuentas_addsy ca
-            SET
-                id_empresa_addsy = e.id_empresa_addsy,
-                id_suscripcion_stripe = e.id_suscripcion_stripe
-            FROM empresas e
-            WHERE ca.id_empresa = e.id;
-        """)
-
-        # Paso 3: Eliminar la columna 'id_empresa' de 'cuentas_addsy'
-        print("--- [3/4] Eliminando columna redundante 'id_empresa'...")
-        cur.execute("ALTER TABLE cuentas_addsy DROP COLUMN IF EXISTS id_empresa;")
-
-        # Paso 4: Eliminar la tabla 'empresas'
-        print("--- [4/4] Eliminando la tabla 'empresas'...")
-        cur.execute("DROP TABLE IF EXISTS empresas;")
-
+        print("\n--- Creando la tabla 'sucursales'...")
+        cur.execute(sql_command)
         conn.commit()
-        print("\n🎉 ¡MIGRACIÓN V3 COMPLETADA! La tabla 'empresas' ha sido eliminada y sus datos integrados.")
+        print("✅ ¡Tabla 'sucursales' creada o ya existente!")
 
     except Exception as e:
-        print(f"\n🔥🔥🔥 ERROR: La migración falló. Se revirtieron los cambios. 🔥🔥🔥")
+        print(f"\n🔥🔥🔥 ERROR: La operación falló. 🔥🔥🔥")
         print(e)
-        if conn: conn.rollback()
+        if conn:
+            conn.rollback()
     finally:
-        if conn: conn.close()
-        print("\n🔌 Conexión cerrada.")
+        if conn:
+            conn.close()
+            print("\n🔌 Conexión a la base de datos cerrada.")
 
 if __name__ == '__main__':
-    migrate_and_delete_empresas()
+    crear_tabla_sucursales()

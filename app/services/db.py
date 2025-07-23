@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from uuid import UUID
 
-# (Las funciones get_connection y buscar_cuenta_addsy_por_correo no cambian)
 def get_connection():
     try:
         db_url = os.getenv("DATABASE_URL") + "?sslmode=require"
@@ -19,7 +18,6 @@ def get_connection():
 def buscar_cuenta_addsy_por_correo(correo: str):
     conn = get_connection()
     if not conn: return None
-    # 👉 Query actualizada para unir el id_empresa_addsy
     query = "SELECT * FROM cuentas_addsy WHERE correo = %s;"
     try:
         with conn.cursor() as cur:
@@ -29,20 +27,14 @@ def buscar_cuenta_addsy_por_correo(correo: str):
     finally:
         if conn: conn.close()
 
-# 👉 FUNCIÓN RENOMBRADA para que coincida con el controlador
 def crear_cuenta_addsy(data: dict):
-    """
-    Crea la cuenta Addsy directamente con todos los datos de la empresa.
-    """
     conn = get_connection()
     if not conn: return None
-    
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM cuentas_addsy;")
             total_cuentas = cur.fetchone()['count']
             id_empresa_addsy = f"MOD_EMP_{1001 + total_cuentas}"
-            
             sql = """
                 INSERT INTO cuentas_addsy (
                     id_empresa_addsy, nombre_empresa, rfc, nombre_completo, 
@@ -66,8 +58,6 @@ def crear_cuenta_addsy(data: dict):
     finally:
         if conn: conn.close()
 
-
-# (El resto de las funciones de db.py permanecen igual)
 def actualizar_cuenta_para_verificacion(correo, token, token_expira):
     conn = get_connection()
     if not conn: return False
@@ -82,25 +72,16 @@ def actualizar_cuenta_para_verificacion(correo, token, token_expira):
         if conn: conn.close()
 
 def verificar_token_y_activar_cuenta(token: str):
-    """Busca una cuenta por token, la activa si es válido y devuelve sus datos."""
     conn = get_connection()
     if not conn: return None
-
     try:
         with conn.cursor() as cur:
-            # La consulta busca el token en la columna correcta.
             cur.execute("SELECT * FROM cuentas_addsy WHERE token_recuperacion = %s;", (token,))
             cuenta = cur.fetchone()
-
-            # Si no encuentra ninguna fila, el token no es válido.
             if not cuenta:
                 return "invalid_token"
-            
-            # Si encuentra la fila, verifica que el token no haya expirado.
             if not cuenta["token_expira"] or cuenta["token_expira"] < datetime.now(cuenta["token_expira"].tzinfo):
                 return "expired_token"
-
-            # Si todo es correcto, activa la cuenta y limpia los campos del token.
             cur.execute(
                 "UPDATE cuentas_addsy SET estatus_cuenta = 'verificada', token_recuperacion = NULL, token_expira = NULL WHERE id = %s RETURNING *;",
                 (cuenta["id"],)
@@ -123,20 +104,25 @@ def activar_suscripcion_y_terminal(id_cuenta: int, id_terminal: str, id_stripe: 
         with conn.cursor() as cur:
             fecha_vencimiento_prueba = datetime.utcnow() + timedelta(days=14)
             cur.execute("INSERT INTO suscripciones_software (id_cuenta_addsy, software_nombre, estado_suscripcion, fecha_vencimiento) VALUES (%s, 'modula', 'prueba_gratis', %s)", (id_cuenta, fecha_vencimiento_prueba))
-            # 👉 Se usa id_cuenta como el foreign key que antes era id_empresa
-            cur.execute("INSERT INTO sucursales (id_empresa, nombre) VALUES (%s, %s) RETURNING id;", (id_cuenta, 'Sucursal Principal'))
+            
+            # 👉 CORRECCIÓN: Usar la columna 'id_cuenta_addsy'
+            cur.execute("INSERT INTO sucursales (id_cuenta_addsy, nombre) VALUES (%s, %s) RETURNING id;", (id_cuenta, 'Sucursal Principal'))
             sucursal_id = cur.fetchone()['id']
-            cur.execute("INSERT INTO modula_terminales (id_terminal, id_empresa, id_sucursal, nombre_terminal, activa) VALUES (%s, %s, %s, %s, true);", (id_terminal, id_cuenta, sucursal_id, 'Terminal Principal'))
+
+            # 👉 CORRECCIÓN: Usar la columna 'id_cuenta_addsy'
+            cur.execute("INSERT INTO modula_terminales (id_terminal, id_cuenta_addsy, id_sucursal, nombre_terminal, activa) VALUES (%s, %s, %s, %s, true);", (id_terminal, id_cuenta, sucursal_id, 'Terminal Principal'))
+            
             cur.execute("UPDATE cuentas_addsy SET id_suscripcion_stripe = %s WHERE id = %s;", (id_stripe, id_cuenta))
             conn.commit()
+            print(f"✅ Suscripción, sucursal y terminal activadas para cuenta ID {id_cuenta}.")
             return True
     except Exception as e:
         conn.rollback()
+        print(f"🔥🔥 ERROR en la activación de servicios: {e}")
         return False
     finally:
         if conn: conn.close()
-        
-# (El resto de las funciones de db.py que agregamos antes para terminales y suscripciones)
+
 def get_suscripciones_por_cuenta(id_cuenta: int):
     conn = get_connection()
     if not conn: return []
@@ -152,7 +138,8 @@ def get_suscripciones_por_cuenta(id_cuenta: int):
 def get_terminales_por_cuenta(id_cuenta: int):
     conn = get_connection()
     if not conn: return []
-    query = "SELECT * FROM modula_terminales WHERE id_empresa = %s;"
+    # 👉 CORRECCIÓN: Usar la columna 'id_cuenta_addsy' para la consulta
+    query = "SELECT * FROM modula_terminales WHERE id_cuenta_addsy = %s;"
     try:
         with conn.cursor() as cur:
             cur.execute(query, (id_cuenta,))
@@ -166,12 +153,13 @@ def crear_terminal(id_cuenta: int, terminal_data: dict):
     if not conn: return None
     sql = """
         INSERT INTO modula_terminales 
-            (id_terminal, id_empresa, id_sucursal, nombre_terminal, activa)
+            (id_terminal, id_cuenta_addsy, id_sucursal, nombre_terminal, activa)
         VALUES (%s, %s, %s, %s, true)
         RETURNING *;
     """
+    # 👉 CORRECCIÓN: Usar la columna 'id_cuenta_addsy' en el INSERT
     params = (
-        UUID(terminal_data['id_terminal']),
+        terminal_data['id_terminal'],
         id_cuenta,
         terminal_data['id_sucursal'],
         terminal_data['nombre_terminal']
