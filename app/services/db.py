@@ -105,11 +105,11 @@ def activar_suscripcion_y_terminal(id_cuenta: int, id_terminal: str, id_stripe: 
             fecha_vencimiento_prueba = datetime.utcnow() + timedelta(days=14)
             cur.execute("INSERT INTO suscripciones_software (id_cuenta_addsy, software_nombre, estado_suscripcion, fecha_vencimiento) VALUES (%s, 'modula', 'prueba_gratis', %s)", (id_cuenta, fecha_vencimiento_prueba))
             
-            # 👉 CORRECCIÓN: Usar la columna 'id_cuenta_addsy'
+            # 👉 CORRECCIÓN: Usar la columna 'id_cuenta_addsy' en SUCURSALES
             cur.execute("INSERT INTO sucursales (id_cuenta_addsy, nombre) VALUES (%s, %s) RETURNING id;", (id_cuenta, 'Sucursal Principal'))
             sucursal_id = cur.fetchone()['id']
 
-            # 👉 CORRECCIÓN: Usar la columna 'id_cuenta_addsy'
+            # 👉 CORRECCIÓN: Usar la columna 'id_cuenta_addsy' en TERMINALES
             cur.execute("INSERT INTO modula_terminales (id_terminal, id_cuenta_addsy, id_sucursal, nombre_terminal, activa) VALUES (%s, %s, %s, %s, true);", (id_terminal, id_cuenta, sucursal_id, 'Terminal Principal'))
             
             cur.execute("UPDATE cuentas_addsy SET id_suscripcion_stripe = %s WHERE id = %s;", (id_stripe, id_cuenta))
