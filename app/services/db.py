@@ -81,24 +81,40 @@ def actualizar_cuenta_para_verificacion(correo, token, token_expira):
     finally:
         if conn: conn.close()
 
-def verificar_token_y_activar_cuenta(token):
+def verificar_token_y_activar_cuenta(token: str):
+    """Busca una cuenta por token, la activa si es válido y devuelve sus datos."""
     conn = get_connection()
     if not conn: return None
+
     try:
         with conn.cursor() as cur:
+            # La consulta busca el token en la columna correcta.
             cur.execute("SELECT * FROM cuentas_addsy WHERE token_recuperacion = %s;", (token,))
             cuenta = cur.fetchone()
-            if not cuenta: return "invalid_token"
-            if not cuenta["token_expira"] or cuenta["token_expira"] < datetime.now(cuenta["token_expira"].tzinfo): return "expired_token"
-            cur.execute("UPDATE cuentas_addsy SET estatus_cuenta = 'verificada', token_recuperacion = NULL, token_expira = NULL WHERE id = %s RETURNING *;", (cuenta["id"],))
+
+            # Si no encuentra ninguna fila, el token no es válido.
+            if not cuenta:
+                return "invalid_token"
+            
+            # Si encuentra la fila, verifica que el token no haya expirado.
+            if not cuenta["token_expira"] or cuenta["token_expira"] < datetime.now(cuenta["token_expira"].tzinfo):
+                return "expired_token"
+
+            # Si todo es correcto, activa la cuenta y limpia los campos del token.
+            cur.execute(
+                "UPDATE cuentas_addsy SET estatus_cuenta = 'verificada', token_recuperacion = NULL, token_expira = NULL WHERE id = %s RETURNING *;",
+                (cuenta["id"],)
+            )
             cuenta_activada = cur.fetchone()
             conn.commit()
             return cuenta_activada
     except Exception as e:
+        print(f"🔥🔥 ERROR al verificar token: {e}")
         conn.rollback()
         return None
     finally:
-        if conn: conn.close()
+        if conn:
+            conn.close()
 
 def activar_suscripcion_y_terminal(id_cuenta: int, id_terminal: str, id_stripe: str):
     conn = get_connection()
