@@ -1,6 +1,4 @@
-# mail.py
-# Envío de correos de verificación por SMTP usando Gmail
-
+# app/services/mail.py
 import smtplib
 import os
 from dotenv import load_dotenv
@@ -12,39 +10,30 @@ load_dotenv()
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 
-def enviar_correo_verificacion(destinatario, nombre_usuario, token, id_terminal):
-    """
-    Envía un correo con botón de verificación usando SMTP de Gmail.
-    """
+# 👉 Función actualizada para aceptar más parámetros para el enlace
+def enviar_correo_verificacion(destinatario, nombre_usuario, token, id_terminal, id_stripe_session):
+    """Envía un correo con un enlace de verificación que ahora incluye todos los IDs necesarios."""
 
-    enlace = f"https://modula-backend.onrender.com/verificar-cuenta?token={token}&id_terminal={id_terminal}"
+    # 👉 Enlace ahora contiene todo lo necesario para el paso de verificación
+    enlace = f"https://modula-backend.onrender.com/verificar-cuenta?token={token}&id_terminal={id_terminal}&session_id={id_stripe_session}"
 
     asunto = "Verifica tu cuenta Addsy 🚀"
-
-    # HTML personalizado con botón
     cuerpo_html = f"""
     <html>
     <body style="font-family: Arial, sans-serif;">
         <h2>👋 ¡Hola {nombre_usuario}!</h2>
-        <p>Gracias por registrarte en <strong>Addsy</strong>.</p>
-        <p>Para continuar, verifica tu cuenta haciendo clic en el botón:</p>
-        <a href="{enlace}" style="
-            background-color: #007acc;
-            color: white;
-            padding: 12px 20px;
-            text-decoration: none;
-            border-radius: 5px;
-            display: inline-block;
-            margin-top: 10px;
-        ">Verificar cuenta</a>
+        <p>Tu pago ha sido procesado. El último paso es verificar tu cuenta para activar tu servicio.</p>
+        <p>Haz clic en el siguiente botón para completar el proceso:</p>
+        <a href="{enlace}" style="background-color: #007acc; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">
+            Activar mi cuenta
+        </a>
         <p style="margin-top: 30px; font-size: 12px; color: gray;">
             Este enlace expirará en 20 minutos. Si no fuiste tú, puedes ignorar este mensaje.
         </p>
     </body>
     </html>
     """
-
-    # Configurar mensaje
+    
     mensaje = MIMEMultipart("alternative")
     mensaje["Subject"] = asunto
     mensaje["From"] = EMAIL_USER

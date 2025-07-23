@@ -3,7 +3,7 @@ import os
 import psycopg 
 from psycopg.rows import dict_row
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timedelta
 
 load_dotenv()
 
@@ -12,8 +12,7 @@ def get_connection():
     try:
         db_url = os.getenv("DATABASE_URL")
         if not db_url:
-            print("🔥🔥 ERROR: La variable de entorno DATABASE_URL no está definida.")
-            return None
+            raise Exception("La variable de entorno DATABASE_URL no está definida.")
             
         if "sslmode" not in db_url:
             db_url += "?sslmode=require"
@@ -24,18 +23,19 @@ def get_connection():
         print(f"🔥🔥 ERROR DE CONEXIÓN A LA BASE DE DATOS: {e}")
         return None
 
-# --- FUNCIONES PARA LA ARQUITECTURA v2 ---
+# --- 👉 FUNCIONES ADAPTADAS A LA NUEVA ARQUITECTURA ---
 
-def buscar_usuario_admin_por_correo(correo: str):
-    """Busca un admin por su correo y une la información de su empresa."""
+def buscar_cuenta_addsy_por_correo(correo: str):
+    """Busca una cuenta en 'cuentas_addsy' y une la información de su empresa."""
     conn = get_connection()
     if not conn: return None
     
+    # 👉 Query adaptada a la nueva tabla 'cuentas_addsy'
     query = """
-        SELECT ua.*, e.id_empresa_addsy, e.nombre_empresa
-        FROM usuarios_admin ua
-        JOIN empresas e ON ua.id_empresa = e.id
-        WHERE ua.correo = %s;
+        SELECT ca.*, e.id AS id_empresa, e.nombre_empresa
+        FROM cuentas_addsy ca
+        JOIN empresas e ON ca.id_empresa = e.id
+        WHERE ca.correo = %s;
     """
     try:
         with conn.cursor() as cur:
@@ -43,100 +43,141 @@ def buscar_usuario_admin_por_correo(correo: str):
             usuario = cur.fetchone()
         return usuario
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
-def crear_empresa_y_usuario_inicial(data: dict):
-    """Crea una nueva empresa, su primera sucursal y el primer admin en una transacción."""
+def crear_recursos_iniciales(data: dict):
+    """
+    Crea una nueva empresa y la cuenta addsy inicial en una transacción.
+    El estatus inicial será 'pendiente_pago'.
+    """
     conn = get_connection()
     if not conn: return None, None
 
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM empresas;")
-            total_empresas = cur.fetchone()['count']
-            id_empresa_addsy = f"MOD_EMP_{1001 + total_empresas}"
-
+            # 1. Crear la empresa
             cur.execute(
-                "INSERT INTO empresas (id_empresa_addsy, nombre_empresa, rfc, estatus_suscripcion) VALUES (%s, %s, %s, %s) RETURNING id;",
-                (id_empresa_addsy, data['nombre_empresa'], data.get('rfc'), 'pendiente_pago')
+                "INSERT INTO empresas (nombre_empresa, rfc) VALUES (%s, %s) RETURNING id;",
+                (data['nombre_empresa'], data.get('rfc'))
             )
             empresa_id = cur.fetchone()['id']
 
-            # --- CORRECCIÓN CRÍTICA AQUÍ ---
-            # Se añaden las columnas 'token' y 'token_expira' con valores NULL en la inserción.
+            # 2. Crear la cuenta addsy principal
+            # 👉 INSERT adaptado a la tabla y columnas de 'cuentas_addsy'
             cur.execute(
                 """
-                INSERT INTO usuarios_admin 
-                    (id_empresa, nombre_completo, telefono, correo, correo_recuperacion, contrasena_hash, estatus, fecha_nacimiento, token, token_expira) 
+                INSERT INTO cuentas_addsy 
+                    (id_empresa, nombre_completo, telefono, correo, contrasena_hash, estatus_cuenta, fecha_nacimiento, nombre_empresa, rfc) 
                 VALUES 
-                    (%s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL) RETURNING id;
+                    (%s, %s, %s, %s, %s, 'pendiente_pago', %s, %s, %s) RETURNING id;
                 """,
-                (empresa_id, data['nombre_completo'], data['telefono'], data['correo'], data.get('correo_recuperacion'), data['contrasena_hash'], 'pendiente_pago', data['fecha_nacimiento'])
+                (
+                    empresa_id, data['nombre_completo'], data['telefono'], data['correo'],
+                    data['contrasena_hash'], data['fecha_nacimiento'], data['nombre_empresa'], data.get('rfc')
+                )
             )
-            usuario_id = cur.fetchone()['id']
-
-            cur.execute(
-                "INSERT INTO sucursales (id_empresa, id_sucursal_addsy, nombre) VALUES (%s, %s, %s);",
-                (empresa_id, 'SUC01', 'Sucursal Principal')
-            )
+            cuenta_id = cur.fetchone()['id']
 
             conn.commit()
-            print(f"✅ Empresa '{data['nombre_empresa']}' y Admin '{data['correo']}' creados exitosamente.")
-            return empresa_id, usuario_id
+            print(f"✅ Pre-registro exitoso para Empresa ID:{empresa_id} y Cuenta ID:{cuenta_id}.")
+            return empresa_id, cuenta_id
     
     except Exception as e:
         conn.rollback()
-        print(f"🔥🔥 ERROR en transacción de creación: {e}")
+        print(f"🔥🔥 ERROR en transacción de creación inicial: {e}")
         return None, None
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
-def actualizar_estatus_admin_para_verificacion(correo: str, token: str, token_expira):
-    """Actualiza el estatus del admin a 'pendiente' y guarda el token de verificación."""
+def actualizar_cuenta_para_verificacion(correo: str, token: str, token_expira: datetime):
+    """Actualiza la cuenta a 'pendiente_verificacion' y guarda el token."""
     conn = get_connection()
     if not conn: return False
     
-    query = "UPDATE usuarios_admin SET estatus = 'pendiente', token = %s, token_expira = %s WHERE correo = %s AND estatus = 'pendiente_pago';"
+    query = """
+        UPDATE cuentas_addsy 
+        SET estatus_cuenta = 'pendiente_verificacion', token_recuperacion = %s, token_expira = %s 
+        WHERE correo = %s AND estatus_cuenta = 'pendiente_pago';
+    """
     try:
         with conn.cursor() as cur:
             cur.execute(query, (token, token_expira, correo))
             updated_rows = cur.rowcount
         conn.commit()
-        print(f"ℹ️ Usuario admin {correo} actualizado para verificación. Filas afectadas: {updated_rows}")
+        print(f"ℹ️ Cuenta {correo} actualizada para verificación. Filas afectadas: {updated_rows}")
         return updated_rows > 0
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
-def verificar_token_y_activar_admin(token: str):
-    """Busca un usuario por token, lo activa si es válido y devuelve sus datos."""
+def verificar_token_y_activar_cuenta(token: str):
+    """Busca una cuenta por token, la activa si es válido y devuelve sus datos."""
     conn = get_connection()
     if not conn: return None
-
+    
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM usuarios_admin WHERE token = %s;", (token,))
-            usuario = cur.fetchone()
+            cur.execute("SELECT * FROM cuentas_addsy WHERE token_recuperacion = %s;", (token,))
+            cuenta = cur.fetchone()
 
-            if not usuario:
-                return "invalid_token"
-            
-            if not usuario["token_expira"] or usuario["token_expira"] < datetime.now(usuario["token_expira"].tzinfo):
-                return "expired_token"
+            if not cuenta: return "invalid_token"
+            if not cuenta["token_expira"] or cuenta["token_expira"] < datetime.now(cuenta["token_expira"].tzinfo): return "expired_token"
 
             cur.execute(
-                "UPDATE usuarios_admin SET estatus = 'verificada', token = NULL, token_expira = NULL WHERE id = %s RETURNING *;",
-                (usuario["id"],)
+                "UPDATE cuentas_addsy SET estatus_cuenta = 'verificada', token_recuperacion = NULL, token_expira = NULL WHERE id = %s RETURNING *;",
+                (cuenta["id"],)
             )
-            usuario_activado = cur.fetchone()
+            cuenta_activada = cur.fetchone()
             conn.commit()
-            return usuario_activado
+            return cuenta_activada
     except Exception as e:
-        print(f"🔥🔥 ERROR al verificar token: {e}")
         conn.rollback()
+        print(f"🔥🔥 ERROR al verificar token: {e}")
         return None
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
+        
+def activar_suscripcion_y_terminal(id_cuenta: int, id_empresa: int, id_terminal: str, id_stripe: str):
+    """
+    Crea la suscripción, la sucursal principal y la terminal asociada después de una verificación exitosa.
+    """
+    conn = get_connection()
+    if not conn: return False
+    
+    try:
+        with conn.cursor() as cur:
+            # 1. Crear suscripción de prueba para Modula
+            fecha_vencimiento_prueba = datetime.utcnow() + timedelta(days=14)
+            cur.execute(
+                """
+                INSERT INTO suscripciones_software 
+                    (id_cuenta_addsy, software_nombre, estado_suscripcion, fecha_vencimiento)
+                VALUES (%s, 'modula', 'prueba_gratis', %s)
+                """,
+                (id_cuenta, fecha_vencimiento_prueba)
+            )
+            
+            # 2. Crear sucursal principal
+            cur.execute(
+                "INSERT INTO sucursales (id_empresa, nombre) VALUES (%s, %s) RETURNING id;",
+                (id_empresa, 'Sucursal Principal')
+            )
+            sucursal_id = cur.fetchone()['id']
+
+            # 3. Registrar la terminal
+            cur.execute(
+                "INSERT INTO modula_terminales (id_terminal, id_empresa, id_sucursal, nombre_terminal, activa) VALUES (%s, %s, %s, %s, true);",
+                (id_terminal, id_empresa, sucursal_id, 'Terminal Principal')
+            )
+            
+            # 4. (Opcional) Guardar el ID de suscripción de Stripe en la tabla 'empresas'
+            cur.execute("UPDATE empresas SET id_suscripcion_stripe = %s WHERE id = %s;", (id_stripe, id_empresa))
+
+            conn.commit()
+            print(f"✅ Suscripción, sucursal y terminal activadas para cuenta ID {id_cuenta}.")
+            return True
+    except Exception as e:
+        conn.rollback()
+        print(f"🔥🔥 ERROR en la activación de servicios: {e}")
+        return False
+    finally:
+        if conn: conn.close()
