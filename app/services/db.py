@@ -31,7 +31,7 @@ def buscar_cuenta_addsy_por_correo(correo: str):
     if not conn: return None
 
     query = """
-        SELECT ca.*, e.id AS id_empresa, e.nombre_empresa
+        SELECT ca.*, e.id AS id_empresa, e.nombre_empresa, e.id_empresa_addsy
         FROM cuentas_addsy ca
         JOIN empresas e ON ca.id_empresa = e.id
         WHERE ca.correo = %s;
@@ -54,15 +54,19 @@ def crear_recursos_iniciales(data: dict):
 
     try:
         with conn.cursor() as cur:
-            # 1. Crear la empresa
+            # 👉 CORRECCIÓN AQUÍ: Reintroducimos la lógica para generar un ID único para la empresa.
+            cur.execute("SELECT COUNT(*) FROM empresas;")
+            total_empresas = cur.fetchone()['count']
+            id_empresa_addsy = f"MOD_EMP_{1001 + total_empresas}"
+
+            # 1. Crear la empresa, ahora incluyendo el id_empresa_addsy
             cur.execute(
-                "INSERT INTO empresas (nombre_empresa, rfc) VALUES (%s, %s) RETURNING id;",
-                (data['nombre_empresa'], data.get('rfc'))
+                "INSERT INTO empresas (id_empresa_addsy, nombre_empresa, rfc) VALUES (%s, %s, %s) RETURNING id;",
+                (id_empresa_addsy, data['nombre_empresa'], data.get('rfc'))
             )
             empresa_id = cur.fetchone()['id']
 
             # 2. Crear la cuenta addsy principal
-            # 👉 CORRECCIÓN AQUÍ: Se ajustó el INSERT para pasar todos los valores como parámetros.
             sql_cuenta = """
                 INSERT INTO cuentas_addsy
                     (id_empresa, nombre_completo, telefono, correo, contrasena_hash, estatus_cuenta, fecha_nacimiento, nombre_empresa, rfc)
@@ -74,7 +78,7 @@ def crear_recursos_iniciales(data: dict):
                 data['telefono'],
                 data['correo'],
                 data['contrasena_hash'],
-                'pendiente_pago',  # Valor para 'estatus_cuenta'
+                'pendiente_pago',
                 data['fecha_nacimiento'],
                 data['nombre_empresa'],
                 data.get('rfc')
@@ -121,7 +125,7 @@ def verificar_token_y_activar_cuenta(token: str):
 
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM cuentas_addsy WHERE token_recuperacion = %s;", (token,))
+            cur.execute("SELECT ca.*, e.id_empresa_addsy FROM cuentas_addsy ca JOIN empresas e ON ca.id_empresa = e.id WHERE ca.token_recuperacion = %s;", (token,))
             cuenta = cur.fetchone()
 
             if not cuenta: return "invalid_token"
@@ -132,6 +136,8 @@ def verificar_token_y_activar_cuenta(token: str):
                 (cuenta["id"],)
             )
             cuenta_activada = cur.fetchone()
+            # Añadimos el id_empresa_addsy que recuperamos antes al diccionario de la cuenta activada
+            cuenta_activada['id_empresa_addsy'] = cuenta['id_empresa_addsy']
             conn.commit()
             return cuenta_activada
     except Exception as e:
