@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse
 
 # Importaciones de modelos y servicios
 from app.services.models import RegistroCuenta, LoginData, Token
-from app import models
+from app.services import models
 from app.services.stripe_service import crear_sesion_checkout_para_registro
 from app.services.security import hash_contrasena, verificar_contrasena, crear_access_token
 from app.services.cloud.setup_empresa_cloud import inicializar_empresa_nueva

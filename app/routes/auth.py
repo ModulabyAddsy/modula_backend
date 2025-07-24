@@ -8,8 +8,8 @@ from app.services.models import LoginData, Token
 
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends
-from app import models, controller # Asumiendo importaciones
-from app.services.db import get_db # Asumiendo que así obtienes la sesión de DB
+from app.services import models
+
 
 router = APIRouter()
 
@@ -42,7 +42,6 @@ async def login(data: LoginData):
 )
 def verificar_terminal_activa_route(
     request: models.TerminalVerificationRequest, 
-    db: Session = Depends(get_db)
 ):
     """
     Verifica si un ID de terminal es válido y está activo.
@@ -51,6 +50,6 @@ def verificar_terminal_activa_route(
     # Llama a la función del controlador que contiene toda la lógica.
     # La ruta se mantiene limpia y solo se encarga de recibir la petición
     # y devolver la respuesta.
-    return controller.auth_controller.verificar_terminal_activa_controller(
-        request=request, db=db
+    return auth_controller.verificar_terminal_activa_controller(
+        request=request
     )
