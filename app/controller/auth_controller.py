@@ -127,7 +127,7 @@ def verificar_terminal_activa_controller(
     # 3. Si se encuentra, creamos el token de acceso.
     #    El 'subject' del token será el ID de la cuenta para futuras validaciones.
     id_cuenta = terminal_data["id_cuenta_addsy"]
-    access_token = security.create_access_token(data={"sub": str(id_cuenta)})
+    access_token = security.crear_access_token(data={"sub": str(id_cuenta)})
     
     # 4. Devolver la respuesta usando los datos del diccionario que obtuvimos.
     return models.TerminalVerificationResponse(
