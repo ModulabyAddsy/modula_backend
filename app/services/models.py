@@ -60,3 +60,18 @@ class Terminal(TerminalBase):
 
     class Config:
         orm_mode = True
+        
+
+class TerminalVerificationRequest(BaseModel):
+    """Schema para la petición de verificación de terminal."""
+    id_terminal: str
+
+
+class TerminalVerificationResponse(BaseModel):
+    """Schema para la respuesta exitosa de verificación."""
+    access_token: str
+    token_type: str = "bearer"
+    id_empresa: int
+    nombre_empresa: str
+    id_sucursal: int
+    nombre_sucursal: str

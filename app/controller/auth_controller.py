@@ -1,12 +1,18 @@
 # app/controller/auth_controller.py
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 
 # Importaciones de modelos y servicios
 from app.services.models import RegistroCuenta, LoginData, Token
+from app import models
 from app.services.stripe_service import crear_sesion_checkout_para_registro
 from app.services.security import hash_contrasena, verificar_contrasena, crear_access_token
 from app.services.cloud.setup_empresa_cloud import inicializar_empresa_nueva
+
+#Importaciones para el endpoint de verificar la terminal
+from sqlalchemy.orm import Session
+from app.services.db import buscar_terminal_activa_por_id
+from app.services import security
 
 # Importaciones de todas las funciones de base de datos necesarias para el flujo de autenticación
 from app.services.db import (
@@ -101,3 +107,33 @@ async def verificar_cuenta(request: Request):
         return HTMLResponse("<h3>✅ Servicios activados, pero falló la creación en la nube. Contacta a soporte.</h3>", status_code=500)
 
     return HTMLResponse("<h2>✅ ¡Todo listo! Ya puedes volver al software e iniciar sesión.</h2>")
+
+def verificar_terminal_activa_controller(
+    request: models.TerminalVerificationRequest # Sigue recibiendo el schema de Pydantic
+) -> models.TerminalVerificationResponse:
+    """
+    Controlador para verificar una terminal usando la función de DB con SQL directo.
+    """
+    # 1. Llamar a nuestra nueva función de db.py
+    terminal_data = buscar_terminal_activa_por_id(request.id_terminal)
+
+    # 2. Si no se encuentra, la función de DB devolverá None.
+    if not terminal_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Terminal no registrada o inactiva.",
+        )
+
+    # 3. Si se encuentra, creamos el token de acceso.
+    #    El 'subject' del token será el ID de la cuenta para futuras validaciones.
+    id_cuenta = terminal_data["id_cuenta_addsy"]
+    access_token = security.create_access_token(data={"sub": str(id_cuenta)})
+    
+    # 4. Devolver la respuesta usando los datos del diccionario que obtuvimos.
+    return models.TerminalVerificationResponse(
+        access_token=access_token,
+        id_empresa=terminal_data["id_cuenta_addsy"], # O el ID que corresponda
+        nombre_empresa=terminal_data["nombre_empresa"],
+        id_sucursal=terminal_data["id_sucursal"],
+        nombre_sucursal=terminal_data["nombre_sucursal"],
+    )

@@ -176,3 +176,37 @@ def crear_terminal(id_cuenta: int, terminal_data: dict):
         return None
     finally:
         if conn: conn.close()
+        
+def buscar_terminal_activa_por_id(id_terminal: str):
+    """
+    Busca una terminal por su ID y se une con sucursales y cuentas
+    para obtener toda la información necesaria para la sesión.
+    """
+    conn = get_connection()
+    if not conn: return None
+    
+    # Esta consulta une las 3 tablas para obtener todos los datos en una sola llamada.
+    query = """
+        SELECT 
+            t.id_terminal, t.activa,
+            s.id as id_sucursal, s.nombre as nombre_sucursal,
+            c.id as id_cuenta_addsy, c.id_empresa_addsy, c.nombre_empresa
+        FROM 
+            modula_terminales t
+        JOIN 
+            sucursales s ON t.id_sucursal = s.id
+        JOIN 
+            cuentas_addsy c ON s.id_cuenta_addsy = c.id
+        WHERE 
+            t.id_terminal = %s AND t.activa = TRUE;
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, (id_terminal,))
+            terminal_data = cur.fetchone() # fetchone porque el ID de terminal es único
+        return terminal_data
+    except Exception as e:
+        print(f"🔥🔥 ERROR al buscar terminal activa por ID: {e}")
+        return None
+    finally:
+        if conn: conn.close()

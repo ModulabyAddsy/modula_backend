@@ -5,6 +5,12 @@ from app.services.models import RegistroCuenta
 from app.controller import auth_controller
 from app.services.models import LoginData, Token
 
+
+from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends
+from app import models, controller # Asumiendo importaciones
+from app.services.db import get_db # Asumiendo que así obtienes la sesión de DB
+
 router = APIRouter()
 
 # --- CORRECCIÓN AQUÍ ---
@@ -25,3 +31,26 @@ async def verificar_cuenta(request: Request):
 async def login(data: LoginData):
     """Endpoint para iniciar sesión y obtener un token JWT."""
     return await auth_controller.login_para_access_token(data)
+
+# --- Endpoint para la verificación de terminal en el arranque ---
+
+@router.post(
+    "/verificar-terminal",
+    response_model=models.TerminalVerificationResponse,
+    summary="Verifica una terminal al arranque",
+    tags=["Autenticación"]
+)
+def verificar_terminal_activa_route(
+    request: models.TerminalVerificationRequest, 
+    db: Session = Depends(get_db)
+):
+    """
+    Verifica si un ID de terminal es válido y está activo.
+    Si es exitoso, devuelve un token de acceso y datos de la sesión.
+    """
+    # Llama a la función del controlador que contiene toda la lógica.
+    # La ruta se mantiene limpia y solo se encarga de recibir la petición
+    # y devolver la respuesta.
+    return controller.auth_controller.verificar_terminal_activa_controller(
+        request=request, db=db
+    )
