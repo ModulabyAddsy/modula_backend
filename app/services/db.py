@@ -210,3 +210,82 @@ def buscar_terminal_activa_por_id(id_terminal: str):
         return None
     finally:
         if conn: conn.close()
+        
+def actualizar_y_verificar_suscripcion(id_cuenta: int):
+    """
+    Actualiza el estado de la suscripción si ha vencido y luego devuelve
+    el estado actual.
+    """
+    conn = get_connection()
+    if not conn: return None
+    try:
+        with conn.cursor() as cur:
+            # Primero, actualizamos las suscripciones vencidas de prueba o activas
+            cur.execute("""
+                UPDATE suscripciones_software
+                SET estado_suscripcion = 'vencida'
+                WHERE id_cuenta_addsy = %s AND fecha_vencimiento < NOW() 
+                AND estado_suscripcion IN ('prueba_gratis', 'activa');
+            """, (id_cuenta,))
+            
+            # Luego, obtenemos el estado actual de la suscripción
+            cur.execute(
+                "SELECT estado_suscripcion FROM suscripciones_software WHERE id_cuenta_addsy = %s;",
+                (id_cuenta,)
+            )
+            suscripcion = cur.fetchone()
+            conn.commit()
+            return suscripcion
+    except Exception as e:
+        conn.rollback()
+        print(f"🔥🔥 ERROR al actualizar/verificar suscripción: {e}")
+        return None
+    finally:
+        if conn: conn.close()
+
+def actualizar_contadores_suscripcion(id_cuenta: int):
+    """
+    Recuenta las sucursales y terminales activas y actualiza la tabla de suscripciones.
+    """
+    conn = get_connection()
+    if not conn: return
+    try:
+        with conn.cursor() as cur:
+            # Contar sucursales
+            cur.execute("SELECT count(*) FROM sucursales WHERE id_cuenta_addsy = %s;", (id_cuenta,))
+            num_sucursales = cur.fetchone()['count']
+            
+            # Contar terminales activas
+            cur.execute("SELECT count(*) FROM modula_terminales WHERE id_cuenta_addsy = %s AND activa = TRUE;", (id_cuenta,))
+            num_terminales = cur.fetchone()['count']
+
+            # Actualizar la tabla de suscripciones
+            cur.execute("""
+                UPDATE suscripciones_software
+                SET numero_sucursales = %s, terminales_activas = %s
+                WHERE id_cuenta_addsy = %s;
+            """, (num_sucursales, num_terminales, id_cuenta))
+            conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"🔥🔥 ERROR al actualizar contadores: {e}")
+    finally:
+        if conn: conn.close()
+
+def actualizar_ip_terminal(id_terminal: str, ip: str):
+    """Actualiza la dirección IP y la última sincronización de una terminal."""
+    conn = get_connection()
+    if not conn: return
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE modula_terminales SET direccion_ip = %s, ultima_sincronizacion = NOW() WHERE id_terminal = %s;",
+                (ip, id_terminal)
+            )
+            conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"🔥🔥 ERROR al actualizar IP de terminal: {e}")
+    finally:
+        if conn: conn.close()
+

@@ -75,3 +75,4 @@ class TerminalVerificationResponse(BaseModel):
     nombre_empresa: str
     id_sucursal: int
     nombre_sucursal: str
+    estado_suscripcion: str # <-- AÑADIR ESTA LÍNEA

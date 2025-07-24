@@ -11,7 +11,12 @@ from app.services.cloud.setup_empresa_cloud import inicializar_empresa_nueva
 
 #Importaciones para el endpoint de verificar la terminal
 from sqlalchemy.orm import Session
-from app.services.db import buscar_terminal_activa_por_id
+from app.services.db import (
+    buscar_terminal_activa_por_id,
+    actualizar_y_verificar_suscripcion,
+    actualizar_contadores_suscripcion,
+    actualizar_ip_terminal
+)
 from app.services import security
 
 # Importaciones de todas las funciones de base de datos necesarias para el flujo de autenticación
@@ -109,31 +114,43 @@ async def verificar_cuenta(request: Request):
     return HTMLResponse("<h2>✅ ¡Todo listo! Ya puedes volver al software e iniciar sesión.</h2>")
 
 def verificar_terminal_activa_controller(
-    request: models.TerminalVerificationRequest # Sigue recibiendo el schema de Pydantic
+    request_data: models.TerminalVerificationRequest, client_ip: str
 ) -> models.TerminalVerificationResponse:
     """
-    Controlador para verificar una terminal usando la función de DB con SQL directo.
+    Controlador principal del arranque: verifica terminal, actualiza estados y contadores,
+    y devuelve una sesión si todo es correcto.
     """
-    # 1. Llamar a nuestra nueva función de db.py
-    terminal_data = buscar_terminal_activa_por_id(request.id_terminal)
+    # 1. Buscar la terminal (como antes)
+    terminal_info = buscar_terminal_activa_por_id(request_data.id_terminal)
+    if not terminal_info:
+        raise HTTPException(status_code=404, detail="Terminal no registrada o inactiva.")
 
-    # 2. Si no se encuentra, la función de DB devolverá None.
-    if not terminal_data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Terminal no registrada o inactiva.",
-        )
+    id_cuenta = terminal_info['id_cuenta_addsy']
 
-    # 3. Si se encuentra, creamos el token de acceso.
-    #    El 'subject' del token será el ID de la cuenta para futuras validaciones.
-    id_cuenta = terminal_data["id_cuenta_addsy"]
+    # --- INICIO DE LA LÓGICA DE AUTOMATIZACIÓN ---
+
+    # 2. Actualizar y Verificar la Suscripción
+    suscripcion = actualizar_y_verificar_suscripcion(id_cuenta)
+    if not suscripcion or suscripcion['estado_suscripcion'] not in ['activa', 'prueba_gratis']:
+        estado = suscripcion['estado_suscripcion'] if suscripcion else 'desconocido'
+        raise HTTPException(status_code=403, detail=f"Suscripción no válida. Estado: {estado}")
+
+    # 3. Actualizar la IP y la última sincronización de la terminal
+    actualizar_ip_terminal(request_data.id_terminal, client_ip)
+    
+    # 4. Actualizar los contadores de sucursales y terminales
+    actualizar_contadores_suscripcion(id_cuenta)
+
+    # --- FIN DE LA LÓGICA DE AUTOMATIZACIÓN ---
+    
+    # 5. Si todo está bien, generar y devolver la sesión
     access_token = security.crear_access_token(data={"sub": str(id_cuenta)})
     
-    # 4. Devolver la respuesta usando los datos del diccionario que obtuvimos.
     return models.TerminalVerificationResponse(
         access_token=access_token,
-        id_empresa=terminal_data["id_cuenta_addsy"], # O el ID que corresponda
-        nombre_empresa=terminal_data["nombre_empresa"],
-        id_sucursal=terminal_data["id_sucursal"],
-        nombre_sucursal=terminal_data["nombre_sucursal"],
+        id_empresa=terminal_info["id_cuenta_addsy"],
+        nombre_empresa=terminal_info["nombre_empresa"],
+        id_sucursal=terminal_info["id_sucursal"],
+        nombre_sucursal=terminal_info["nombre_sucursal"],
+        estado_suscripcion=suscripcion['estado_suscripcion']
     )

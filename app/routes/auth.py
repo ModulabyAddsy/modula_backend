@@ -1,5 +1,5 @@
 # app/routes/auth.py
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends 
 from fastapi.responses import HTMLResponse
 from app.services.models import RegistroCuenta
 from app.controller import auth_controller
@@ -41,7 +41,8 @@ async def login(data: LoginData):
     tags=["Autenticación"]
 )
 def verificar_terminal_activa_route(
-    request: models.TerminalVerificationRequest, 
+    request_data: models.TerminalVerificationRequest, 
+    request: Request 
 ):
     """
     Verifica si un ID de terminal es válido y está activo.
@@ -51,5 +52,6 @@ def verificar_terminal_activa_route(
     # La ruta se mantiene limpia y solo se encarga de recibir la petición
     # y devolver la respuesta.
     return auth_controller.verificar_terminal_activa_controller(
-        request=request
+        request_data=request_data,
+        client_ip=request.client.host
     )
