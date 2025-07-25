@@ -167,9 +167,9 @@ def verificar_terminal_activa_controller(
     
     # --- CORRECCIÓN CRÍTICA: Añadir id_empresa_addsy al token ---
     access_token_data = {
-        "sub": str(id_cuenta), # Aquí 'sub' es el ID de la cuenta, se puede unificar luego si se desea
+        "sub": terminal_info["correo"], # Usar el correo como 'sub', igual que en el login
         "id": id_cuenta,
-        "id_empresa_addsy": terminal_info["id_empresa_addsy"] # <-- CAMPO AÑADIDO
+        "id_empresa_addsy": terminal_info["id_empresa_addsy"]
     }
     access_token = security.crear_access_token(data=access_token_data)
     

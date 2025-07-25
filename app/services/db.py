@@ -220,12 +220,12 @@ def buscar_terminal_activa_por_id(id_terminal: str):
     conn = get_connection()
     if not conn: return None
     
-    # Esta consulta une las 3 tablas para obtener todos los datos en una sola llamada.
+    # --- CORRECCIÓN AQUÍ: Añadir 'c.correo' a la selección ---
     query = """
         SELECT 
             t.id_terminal, t.activa,
             s.id as id_sucursal, s.nombre as nombre_sucursal,
-            c.id as id_cuenta_addsy, c.id_empresa_addsy, c.nombre_empresa
+            c.id as id_cuenta_addsy, c.id_empresa_addsy, c.nombre_empresa, c.correo
         FROM 
             modula_terminales t
         JOIN 
@@ -238,7 +238,7 @@ def buscar_terminal_activa_por_id(id_terminal: str):
     try:
         with conn.cursor() as cur:
             cur.execute(query, (id_terminal,))
-            terminal_data = cur.fetchone() # fetchone porque el ID de terminal es único
+            terminal_data = cur.fetchone()
         return terminal_data
     except Exception as e:
         print(f"🔥🔥 ERROR al buscar terminal activa por ID: {e}")
