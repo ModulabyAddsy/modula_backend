@@ -28,9 +28,13 @@ async def verificar_cuenta(request: Request):
     return await auth_controller.verificar_cuenta(request)
 
 @router.post("/login", response_model=Token)
-async def login(data: LoginData):
+async def login(data: LoginData, request: Request): # 1. Añadir 'request: Request'
     """Endpoint para iniciar sesión y obtener un token JWT."""
-    return await auth_controller.login_para_access_token(data)
+    # 2. Pasar el client_ip al controlador
+    return await auth_controller.login_para_access_token(
+        form_data=data, 
+        client_ip=request.client.host
+    )
 
 # --- Endpoint para la verificación de terminal en el arranque ---
 
