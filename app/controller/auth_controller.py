@@ -73,8 +73,10 @@ async def login_para_access_token(form_data: LoginData, client_ip: str):
     # NOTA: Esta lógica asume que se quiere actualizar la IP de la primera terminal
     # de la cuenta. Funciona para el caso de un solo terminal.
     terminales = get_terminales_por_cuenta(cuenta["id"])
+    id_terminal_respuesta = None
     if terminales:
         id_terminal_a_actualizar = terminales[0]['id_terminal']
+        id_terminal_respuesta = id_terminal_a_actualizar
         actualizar_ip_terminal(id_terminal_a_actualizar, client_ip)
         print(f"IP actualizada para la terminal {id_terminal_a_actualizar} durante el login.")
     
@@ -84,9 +86,14 @@ async def login_para_access_token(form_data: LoginData, client_ip: str):
         "id_empresa_addsy": cuenta["id_empresa_addsy"]
     }
     access_token = crear_access_token(data=access_token_data)
+    
     # Se añade el id_terminal al response del login, para que el cliente lo guarde
     # en su primer inicio de sesión.
-    return {"access_token": access_token, "token_type": "bearer", "id_terminal": terminales[0]['id_terminal'] if terminales else None}
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer", 
+        "id_terminal": id_terminal_respuesta
+    }
 
 
 # --- 3. VERIFICACIÓN DE CUENTA (LÓGICA ACTUALIZADA) ---
