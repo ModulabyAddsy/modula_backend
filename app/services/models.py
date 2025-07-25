@@ -23,7 +23,8 @@ class LoginData(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
-
+    id_terminal: Optional[str] = None # o también 'str | None'
+    
 class TokenData(BaseModel):
     id_cuenta: Optional[int] = None
 
