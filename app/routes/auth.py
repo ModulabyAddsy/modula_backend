@@ -55,3 +55,9 @@ def verificar_terminal_activa_route(
         request_data=request_data,
         client_ip=request.client.host
     )
+
+@router.post("/login", response_model=Token)
+async def login(data: LoginData, request: Request): # <-- 1. Añadir request: Request
+    """Endpoint para iniciar sesión y obtener un token JWT."""
+    # 2. Pasar el client_ip al controlador
+    return await auth_controller.login_para_access_token(data, client_ip=request.client.host)

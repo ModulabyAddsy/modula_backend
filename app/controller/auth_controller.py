@@ -15,20 +15,17 @@ from app.services.cloud.setup_empresa_cloud import (
 
 # Importaciones para el endpoint de verificar la terminal
 from app.services.db import (
-    buscar_terminal_activa_por_id,
-    actualizar_y_verificar_suscripcion,
-    actualizar_contadores_suscripcion,
-    actualizar_ip_terminal
-)
-from app.services import security
-
-# Importaciones de todas las funciones de base de datos necesarias para el flujo de autenticación
-from app.services.db import (
     buscar_cuenta_addsy_por_correo,
     crear_cuenta_addsy,
     verificar_token_y_activar_cuenta,
-    activar_suscripcion_y_terminal
+    activar_suscripcion_y_terminal,
+    actualizar_ip_terminal,
+    buscar_terminal_activa_por_id,
+    actualizar_y_verificar_suscripcion,
+    actualizar_contadores_suscripcion,
+    get_terminales_por_cuenta # <-- ESTA ES LA FUNCIÓN QUE FALTABA IMPORTAR
 )
+from app.services import security
 
 # --- 1. REGISTRO Y PAGO ---
 async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
@@ -62,9 +59,9 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
 
 
 # --- 2. INICIO DE SESIÓN ---
-async def login_para_access_token(form_data: LoginData):
+async def login_para_access_token(form_data: LoginData, client_ip: str):
     """
-    Autentica a un usuario y devuelve un token JWT con todos los datos necesarios.
+    Autentica, actualiza la IP de la primera terminal encontrada y devuelve un token.
     """
     cuenta = buscar_cuenta_addsy_por_correo(form_data.correo)
     if not cuenta or not verificar_contrasena(form_data.contrasena, cuenta["contrasena_hash"]):
@@ -73,14 +70,23 @@ async def login_para_access_token(form_data: LoginData):
     if cuenta["estatus_cuenta"] != "verificada":
         raise HTTPException(status_code=400, detail=f"La cuenta no ha sido verificada. Estatus: {cuenta['estatus_cuenta']}")
     
-    # --- CAMBIO AQUÍ: Añadir id_empresa_addsy al token ---
+    # NOTA: Esta lógica asume que se quiere actualizar la IP de la primera terminal
+    # de la cuenta. Funciona para el caso de un solo terminal.
+    terminales = get_terminales_por_cuenta(cuenta["id"])
+    if terminales:
+        id_terminal_a_actualizar = terminales[0]['id_terminal']
+        actualizar_ip_terminal(id_terminal_a_actualizar, client_ip)
+        print(f"IP actualizada para la terminal {id_terminal_a_actualizar} durante el login.")
+    
     access_token_data = {
         "sub": cuenta["correo"], 
         "id": cuenta["id"],
-        "id_empresa_addsy": cuenta["id_empresa_addsy"] # <--- LÍNEA AÑADIDA
+        "id_empresa_addsy": cuenta["id_empresa_addsy"]
     }
     access_token = crear_access_token(data=access_token_data)
-    return {"access_token": access_token, "token_type": "bearer"}
+    # Se añade el id_terminal al response del login, para que el cliente lo guarde
+    # en su primer inicio de sesión.
+    return {"access_token": access_token, "token_type": "bearer", "id_terminal": terminales[0]['id_terminal'] if terminales else None}
 
 
 # --- 3. VERIFICACIÓN DE CUENTA (LÓGICA ACTUALIZADA) ---
@@ -126,12 +132,15 @@ async def verificar_cuenta(request: Request):
     if not crear_estructura_sucursal(ruta_cloud_creada):
         return HTMLResponse("<h3>✅ Carpeta principal creada, pero falló la creación de la carpeta de sucursal. Contacta a soporte.</h3>", status_code=500)
 
+    actualizar_contadores_suscripcion(cuenta_activada['id'])
+    print(f"Contadores actualizados para la cuenta ID: {cuenta_activada['id']}")
+
     return HTMLResponse("<h2>✅ ¡Todo listo! Tu cuenta, sucursal y espacio en la nube han sido configurados. Ya puedes volver al software e iniciar sesión.</h2>")
 
 def verificar_terminal_activa_controller(
     request_data: models.TerminalVerificationRequest, client_ip: str
 ) -> models.TerminalVerificationResponse:
-    # ... (Esta función no necesita cambios en este paso)
+    
     terminal_info = buscar_terminal_activa_por_id(request_data.id_terminal)
     if not terminal_info:
         raise HTTPException(status_code=404, detail="Terminal no registrada o inactiva.")
@@ -147,7 +156,13 @@ def verificar_terminal_activa_controller(
     
     actualizar_contadores_suscripcion(id_cuenta)
     
-    access_token = security.crear_access_token(data={"sub": str(id_cuenta), "id": id_cuenta})
+    # --- CORRECCIÓN CRÍTICA: Añadir id_empresa_addsy al token ---
+    access_token_data = {
+        "sub": str(id_cuenta), # Aquí 'sub' es el ID de la cuenta, se puede unificar luego si se desea
+        "id": id_cuenta,
+        "id_empresa_addsy": terminal_info["id_empresa_addsy"] # <-- CAMPO AÑADIDO
+    }
+    access_token = security.crear_access_token(data=access_token_data)
     
     return models.TerminalVerificationResponse(
         access_token=access_token,
