@@ -97,42 +97,67 @@ def verificar_token_y_activar_cuenta(token: str):
         if conn:
             conn.close()
 
-def activar_suscripcion_y_terminal(id_cuenta: int, id_terminal: str, id_stripe: str):
+def activar_suscripcion_y_terminal(id_cuenta: int, id_empresa_addsy: str, id_terminal_uuid: str, id_stripe: str):
+    """
+    Activa la suscripción, crea la primera sucursal, la primera terminal
+    y guarda la ruta de la nube para la sucursal.
+    """
     conn = get_connection()
-    if not conn: return False
+    if not conn: return None, None  # Devolvemos None para la ruta si falla la conexión
+
     try:
         with conn.cursor() as cur:
             fecha_vencimiento_prueba = datetime.utcnow() + timedelta(days=14)
             
-            # --- CORRECCIÓN AQUÍ ---
-            # 1. Creamos la suscripción y CAPTURAMOS su ID
+            # 1. Crear la suscripción
             cur.execute(
                 "INSERT INTO suscripciones_software (id_cuenta_addsy, software_nombre, estado_suscripcion, fecha_vencimiento) VALUES (%s, 'modula', 'prueba_gratis', %s) RETURNING id;",
                 (id_cuenta, fecha_vencimiento_prueba)
             )
-            suscripcion_id = cur.fetchone()['id'] # <--- ID de la suscripción capturado
+            suscripcion_id = cur.fetchone()['id']
 
-            # 2. Usamos el ID de la suscripción al crear la primera sucursal
+            # 2. Crear la primera sucursal
             cur.execute(
                 "INSERT INTO sucursales (id_cuenta_addsy, nombre, id_suscripcion) VALUES (%s, %s, %s) RETURNING id;",
-                (id_cuenta, 'Sucursal Principal', suscripcion_id) # <--- ID de suscripción añadido
+                (id_cuenta, 'Sucursal Principal', suscripcion_id)
             )
             sucursal_id = cur.fetchone()['id']
 
-            # El resto sigue igual...
-            cur.execute("INSERT INTO modula_terminales (id_terminal, id_cuenta_addsy, id_sucursal, nombre_terminal, activa) VALUES (%s, %s, %s, %s, true);", (id_terminal, id_cuenta, sucursal_id, 'Terminal Principal'))
+            # 3. CONSTRUIR Y GUARDAR LA RUTA DE LA NUBE (NUEVO)
+            # Construimos la ruta usando el ID de la empresa y el nuevo ID de la sucursal
+            ruta_cloud_sucursal = f"{id_empresa_addsy}/suc_{sucursal_id}/"
+            print(f"🔗 Vinculando sucursal ID {sucursal_id} con la ruta: {ruta_cloud_sucursal}")
             
-            cur.execute("UPDATE cuentas_addsy SET id_suscripcion_stripe = %s WHERE id = %s;", (id_stripe, id_cuenta))
+            # Actualizamos el registro de la sucursal con su ruta en la nube
+            cur.execute(
+                "UPDATE sucursales SET ruta_cloud = %s WHERE id = %s;",
+                (ruta_cloud_sucursal, sucursal_id)
+            )
+
+            # 4. Crear la primera terminal
+            cur.execute(
+                "INSERT INTO modula_terminales (id_terminal, id_cuenta_addsy, id_sucursal, nombre_terminal, activa) VALUES (%s, %s, %s, %s, true);", 
+                (id_terminal_uuid, id_cuenta, sucursal_id, 'Terminal Principal')
+            )
+            
+            # 5. Actualizar la cuenta con el ID de Stripe
+            cur.execute(
+                "UPDATE cuentas_addsy SET id_suscripcion_stripe = %s WHERE id = %s;", 
+                (id_stripe, id_cuenta)
+            )
+            
             conn.commit()
             print(f"✅ Suscripción, sucursal y terminal activadas para cuenta ID {id_cuenta}.")
-            return True
+            # Devolvemos True y la ruta creada para que el endpoint pueda usarla
+            return True, ruta_cloud_sucursal
     except Exception as e:
         conn.rollback()
         print(f"🔥🔥 ERROR en la activación de servicios: {e}")
-        return False
+        # Devolvemos False y None en caso de error
+        return False, None
     finally:
         if conn: conn.close()
-
+        
 def get_suscripciones_por_cuenta(id_cuenta: int):
     conn = get_connection()
     if not conn: return []
@@ -296,6 +321,51 @@ def actualizar_ip_terminal(id_terminal: str, ip: str):
     except Exception as e:
         conn.rollback()
         print(f"🔥🔥 ERROR al actualizar IP de terminal: {e}")
+    finally:
+        if conn: conn.close()
+        
+def crear_nueva_sucursal(id_cuenta: int, id_empresa_addsy: str, nombre_sucursal: str):
+    """
+    Crea un nuevo registro de sucursal, construye su ruta en la nube y la guarda en una transacción.
+    """
+    conn = get_connection()
+    if not conn: return None
+    
+    try:
+        with conn.cursor() as cur:
+            # 1. Obtener el id de la suscripción activa de la cuenta
+            cur.execute(
+                "SELECT id FROM suscripciones_software WHERE id_cuenta_addsy = %s ORDER BY fecha_vencimiento DESC LIMIT 1;",
+                (id_cuenta,)
+            )
+            suscripcion = cur.fetchone()
+            if not suscripcion:
+                raise Exception("No se encontró una suscripción activa para la cuenta.")
+            suscripcion_id = suscripcion['id']
+
+            # 2. Insertar la nueva sucursal y obtener su ID
+            cur.execute(
+                "INSERT INTO sucursales (id_cuenta_addsy, nombre, id_suscripcion) VALUES (%s, %s, %s) RETURNING id;",
+                (id_cuenta, nombre_sucursal, suscripcion_id)
+            )
+            sucursal_id = cur.fetchone()['id']
+
+            # 3. Construir la ruta y actualizar el registro
+            ruta_cloud_sucursal = f"{id_empresa_addsy}/suc_{sucursal_id}/"
+            cur.execute(
+                "UPDATE sucursales SET ruta_cloud = %s WHERE id = %s RETURNING *;",
+                (ruta_cloud_sucursal, sucursal_id)
+            )
+            nueva_sucursal_completa = cur.fetchone()
+            
+            conn.commit()
+            print(f"✅ Sucursal '{nombre_sucursal}' (ID: {sucursal_id}) creada y vinculada a '{ruta_cloud_sucursal}'.")
+            return nueva_sucursal_completa
+
+    except Exception as e:
+        conn.rollback()
+        print(f"🔥🔥 ERROR creando nueva sucursal: {e}")
+        return None
     finally:
         if conn: conn.close()
 

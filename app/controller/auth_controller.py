@@ -7,10 +7,13 @@ from app.services.models import RegistroCuenta, LoginData, Token
 from app.services import models
 from app.services.stripe_service import crear_sesion_checkout_para_registro
 from app.services.security import hash_contrasena, verificar_contrasena, crear_access_token
-from app.services.cloud.setup_empresa_cloud import inicializar_empresa_nueva
+# --- CAMBIO 1: Importar las nuevas funciones de la nube ---
+from app.services.cloud.setup_empresa_cloud import (
+    crear_estructura_base_empresa, 
+    crear_estructura_sucursal
+)
 
-#Importaciones para el endpoint de verificar la terminal
-from sqlalchemy.orm import Session
+# Importaciones para el endpoint de verificar la terminal
 from app.services.db import (
     buscar_terminal_activa_por_id,
     actualizar_y_verificar_suscripcion,
@@ -23,7 +26,6 @@ from app.services import security
 from app.services.db import (
     buscar_cuenta_addsy_por_correo,
     crear_cuenta_addsy,
-    actualizar_cuenta_para_verificacion, # Usada por el webhook, pero es bueno tenerla aquí para claridad
     verificar_token_y_activar_cuenta,
     activar_suscripcion_y_terminal
 )
@@ -62,8 +64,7 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
 # --- 2. INICIO DE SESIÓN ---
 async def login_para_access_token(form_data: LoginData):
     """
-    Autentica a un usuario con su correo y contraseña y, si es exitoso,
-    devuelve un token de acceso JWT.
+    Autentica a un usuario y devuelve un token JWT con todos los datos necesarios.
     """
     cuenta = buscar_cuenta_addsy_por_correo(form_data.correo)
     if not cuenta or not verificar_contrasena(form_data.contrasena, cuenta["contrasena_hash"]):
@@ -72,12 +73,17 @@ async def login_para_access_token(form_data: LoginData):
     if cuenta["estatus_cuenta"] != "verificada":
         raise HTTPException(status_code=400, detail=f"La cuenta no ha sido verificada. Estatus: {cuenta['estatus_cuenta']}")
     
-    access_token_data = {"sub": cuenta["correo"], "id_cuenta": cuenta["id"]}
+    # --- CAMBIO AQUÍ: Añadir id_empresa_addsy al token ---
+    access_token_data = {
+        "sub": cuenta["correo"], 
+        "id": cuenta["id"],
+        "id_empresa_addsy": cuenta["id_empresa_addsy"] # <--- LÍNEA AÑADIDA
+    }
     access_token = crear_access_token(data=access_token_data)
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-# --- 3. VERIFICACIÓN DE CUENTA ---
+# --- 3. VERIFICACIÓN DE CUENTA (LÓGICA ACTUALIZADA) ---
 async def verificar_cuenta(request: Request):
     """
     Paso final del flujo: Se activa al hacer clic en el enlace del correo.
@@ -97,58 +103,55 @@ async def verificar_cuenta(request: Request):
         return HTMLResponse("<h3>❌ Ocurrió un error en el servidor al verificar tu cuenta.</h3>", status_code=500)
 
     cuenta_activada = resultado
-    print(f"✅ Cuenta verificada para: {cuenta_activada['correo']}")
+    id_empresa_addsy = cuenta_activada['id_empresa_addsy']
+    print(f"✅ Cuenta verificada para: {cuenta_activada['correo']} ({id_empresa_addsy})")
     
-    exito_servicios = activar_suscripcion_y_terminal(
+    # --- CAMBIO 2: Actualizar la llamada a la función de DB para pasar el id_empresa_addsy ---
+    exito_servicios, ruta_cloud_creada = activar_suscripcion_y_terminal(
         id_cuenta=cuenta_activada['id'],
-        id_terminal=id_terminal,
+        id_empresa_addsy=id_empresa_addsy, # Nuevo argumento
+        id_terminal_uuid=id_terminal,
         id_stripe=id_stripe_session
     )
+    # --- CAMBIO 3: Capturar los dos valores de retorno y verificar ---
     if not exito_servicios:
-        return HTMLResponse("<h3>✅ Cuenta verificada, pero falló la activación de servicios. Contacta a soporte.</h3>", status_code=500)
+        return HTMLResponse("<h3>✅ Cuenta verificada, pero falló la activación de servicios en la BD. Contacta a soporte.</h3>", status_code=500)
 
-    exito_cloud = inicializar_empresa_nueva(cuenta_activada['id_empresa_addsy'])
-    if not exito_cloud:
-        return HTMLResponse("<h3>✅ Servicios activados, pero falló la creación en la nube. Contacta a soporte.</h3>", status_code=500)
+    # --- CAMBIO 4: Reemplazar la antigua llamada a la nube por las dos nuevas funciones ---
+    # Paso 4.1: Crear la estructura base de la empresa
+    if not crear_estructura_base_empresa(id_empresa_addsy):
+        return HTMLResponse("<h3>✅ Servicios activados, pero falló la creación de la carpeta principal en la nube. Contacta a soporte.</h3>", status_code=500)
 
-    return HTMLResponse("<h2>✅ ¡Todo listo! Ya puedes volver al software e iniciar sesión.</h2>")
+    # Paso 4.2: Crear la estructura específica de la primera sucursal
+    if not crear_estructura_sucursal(ruta_cloud_creada):
+        return HTMLResponse("<h3>✅ Carpeta principal creada, pero falló la creación de la carpeta de sucursal. Contacta a soporte.</h3>", status_code=500)
+
+    return HTMLResponse("<h2>✅ ¡Todo listo! Tu cuenta, sucursal y espacio en la nube han sido configurados. Ya puedes volver al software e iniciar sesión.</h2>")
 
 def verificar_terminal_activa_controller(
     request_data: models.TerminalVerificationRequest, client_ip: str
 ) -> models.TerminalVerificationResponse:
-    """
-    Controlador principal del arranque: verifica terminal, actualiza estados y contadores,
-    y devuelve una sesión si todo es correcto.
-    """
-    # 1. Buscar la terminal (como antes)
+    # ... (Esta función no necesita cambios en este paso)
     terminal_info = buscar_terminal_activa_por_id(request_data.id_terminal)
     if not terminal_info:
         raise HTTPException(status_code=404, detail="Terminal no registrada o inactiva.")
 
     id_cuenta = terminal_info['id_cuenta_addsy']
 
-    # --- INICIO DE LA LÓGICA DE AUTOMATIZACIÓN ---
-
-    # 2. Actualizar y Verificar la Suscripción
     suscripcion = actualizar_y_verificar_suscripcion(id_cuenta)
     if not suscripcion or suscripcion['estado_suscripcion'] not in ['activa', 'prueba_gratis']:
         estado = suscripcion['estado_suscripcion'] if suscripcion else 'desconocido'
         raise HTTPException(status_code=403, detail=f"Suscripción no válida. Estado: {estado}")
 
-    # 3. Actualizar la IP y la última sincronización de la terminal
     actualizar_ip_terminal(request_data.id_terminal, client_ip)
     
-    # 4. Actualizar los contadores de sucursales y terminales
     actualizar_contadores_suscripcion(id_cuenta)
-
-    # --- FIN DE LA LÓGICA DE AUTOMATIZACIÓN ---
     
-    # 5. Si todo está bien, generar y devolver la sesión
-    access_token = security.crear_access_token(data={"sub": str(id_cuenta)})
+    access_token = security.crear_access_token(data={"sub": str(id_cuenta), "id": id_cuenta})
     
     return models.TerminalVerificationResponse(
         access_token=access_token,
-        id_empresa=terminal_info["id_cuenta_addsy"],
+        id_empresa=terminal_info["id_empresa_addsy"],
         nombre_empresa=terminal_info["nombre_empresa"],
         id_sucursal=terminal_info["id_sucursal"],
         nombre_sucursal=terminal_info["nombre_sucursal"],

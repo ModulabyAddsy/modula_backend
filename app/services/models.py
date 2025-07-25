@@ -76,3 +76,19 @@ class TerminalVerificationResponse(BaseModel):
     id_sucursal: int
     nombre_sucursal: str
     estado_suscripcion: str # <-- AÑADIR ESTA LÍNEA
+    
+class SucursalCreate(BaseModel):
+    """Modelo para la creación de una sucursal. Solo necesitamos el nombre."""
+    nombre: str
+    
+class Sucursal(BaseModel):
+    """Modelo completo de una sucursal, tal como está en la BD."""
+    id: int
+    id_cuenta_addsy: int
+    id_suscripcion: int
+    nombre: str
+    fecha_creacion: datetime
+    ruta_cloud: Optional[str] = None
+
+    class Config:
+        orm_mode = True # Permite que el modelo se cree desde un objeto de BD

@@ -1,96 +1,92 @@
 # app/services/cloud/setup_empresa_cloud.py
-# Inicializa la estructura de carpetas en R2 al crear una nueva empresa,
-# basándose en una carpeta modelo y renombrando las subcarpetas necesarias.
+# Gestiona la creación de estructuras de carpetas en Cloudflare R2 para empresas y sucursales.
 
 import boto3
 import os
 from dotenv import load_dotenv
 
-# Cargar variables de entorno desde el archivo .env
+# Cargar variables de entorno
 load_dotenv()
 
-# --- Credenciales y Configuración de R2 ---
-access_key = os.getenv("R2_ACCESS_KEY")
-secret_key = os.getenv("R2_SECRET_ACCESS_KEY")
-account_id = os.getenv("R2_ACCOUNT_ID")
-bucket_name = os.getenv("R2_BUCKET_NAME")
-
-# --- Constantes para nombres de carpetas ---
-# Usar constantes hace el código más fácil de leer y mantener.
-MODELO_FOLDER = "_modelo/"
-PLANTILLA_SUCURSAL_FOLDER = "plantilla_sucursal/"
-NUEVA_SUCURSAL_FOLDER = "suc_001/"
-
-# --- Cliente Boto3 para S3 ---
-# Este cliente se usará para todas las operaciones con R2.
+# --- Configuración de R2 ---
 s3 = boto3.client(
     "s3",
-    endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",
-    aws_access_key_id=access_key,
-    aws_secret_access_key=secret_key,
-    region_name="auto"  # 'auto' es específico para Cloudflare R2
+    endpoint_url=f"https://{os.getenv('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com",
+    aws_access_key_id=os.getenv("R2_ACCESS_KEY"),
+    aws_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY"),
+    region_name="auto"
 )
 
+BUCKET_NAME = os.getenv("R2_BUCKET_NAME")
+MODELO_EMPRESA_FOLDER = "_modelo/plantilla_empresa/"
+MODELO_SUCURSAL_FOLDER = "_modelo/plantilla_sucursal/"
 
-def inicializar_empresa_nueva(empresa_id: str) -> bool:
+
+def crear_estructura_base_empresa(empresa_id: str) -> bool:
     """
-    Inicializa la estructura de carpetas para una nueva empresa, clonando todos
-    los objetos de la carpeta modelo y renombrando la carpeta de la plantilla
-    de sucursal a 'suc_001'.
-
+    Crea la estructura de carpetas base para una nueva empresa.
+    Copia todo desde '_modelo/plantilla_empresa/' a la nueva carpeta de la empresa.
+    
     Args:
-        empresa_id: El identificador único para la nueva empresa (ej. 'MOD_EMP_1001').
-
+        empresa_id: El ID de la empresa (ej. 'MOD_EMP_1001').
+    
     Returns:
-        True si la operación fue exitosa, False en caso de error.
+        True si fue exitoso, False si falló.
     """
     try:
-        print(f"📦 Iniciando clonación desde '{MODELO_FOLDER}' para la nueva empresa '{empresa_id}'...")
+        print(f"🏢 Creando estructura base para la empresa '{empresa_id}'...")
+        # Lógica para copiar la plantilla base de la empresa (si la tienes, ej. para bases generales)
+        # Este es un ejemplo, puedes adaptarlo a tu estructura en '_modelo/plantilla_empresa/'
+        # Por ahora, solo crearemos el marcador de directorio de la empresa.
+        s3.put_object(Bucket=BUCKET_NAME, Key=f"{empresa_id}/")
+        print(f"✅ Estructura base para '{empresa_id}' creada.")
+        return True
+    except Exception as e:
+        print(f"❌ Error creando estructura base para la empresa: {e}")
+        return False
 
-        # 1. Listar todos los objetos dentro de la carpeta modelo.
-        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=MODELO_FOLDER)
+
+def crear_estructura_sucursal(ruta_cloud_sucursal: str) -> bool:
+    """
+    Crea la estructura de carpetas para una nueva sucursal, basándose en una plantilla.
+    Copia todo desde '_modelo/plantilla_sucursal/' a la ruta especificada.
+
+    Args:
+        ruta_cloud_sucursal: La ruta completa donde se creará la carpeta de la sucursal 
+                             (ej. 'MOD_EMP_1001/suc_1/').
+    
+    Returns:
+        True si fue exitoso, False si falló.
+    """
+    try:
+        print(f"🌿 Creando estructura para la sucursal en '{ruta_cloud_sucursal}'...")
         
+        response = s3.list_objects_v2(Bucket=BUCKET_NAME, Prefix=MODELO_SUCURSAL_FOLDER)
+
         if 'Contents' not in response:
-            print(f"⚠️ Advertencia: La carpeta modelo '{MODELO_FOLDER}' está vacía o no existe.")
-            return True  # No es un error, simplemente no hay nada que copiar.
+            print(f"⚠️ La plantilla de sucursal '{MODELO_SUCURSAL_FOLDER}' está vacía o no existe.")
+            # Creamos al menos la carpeta "raíz" de la sucursal
+            s3.put_object(Bucket=BUCKET_NAME, Key=ruta_cloud_sucursal)
+            return True
 
         template_objects = response['Contents']
-        print(f"📂 Se encontraron {len(template_objects)} objetos/archivos en el modelo.")
+        print(f"📄 Se encontraron {len(template_objects)} archivos en la plantilla de sucursal.")
 
-        # 2. Iterar sobre cada objeto del modelo para copiarlo a la nueva ubicación.
         for obj in template_objects:
             original_key = obj['Key']
-            
-            # Omitir la carpeta raíz del modelo para evitar errores.
-            if original_key == MODELO_FOLDER:
+            if original_key == MODELO_SUCURSAL_FOLDER:
                 continue
 
-            # 3. Determinar la ruta de destino del nuevo objeto.
-            # Primero, se reemplaza la carpeta raíz del modelo por el ID de la nueva empresa.
-            # Ejemplo: '_modelo/path/file' -> 'MOD_EMP_1001/path/file'
-            destino_key = original_key.replace(MODELO_FOLDER, f"{empresa_id}/", 1)
+            # Construye la nueva ruta reemplazando el prefijo del modelo por el de destino
+            destino_key = original_key.replace(MODELO_SUCURSAL_FOLDER, ruta_cloud_sucursal, 1)
             
-            # Segundo, si la ruta contiene la carpeta de plantilla de sucursal, se renombra.
-            # Ejemplo: 'MOD_EMP_1001/plantilla_sucursal/file' -> 'MOD_EMP_1001/suc_001/file'
-            destino_key = destino_key.replace(PLANTILLA_SUCURSAL_FOLDER, NUEVA_SUCURSAL_FOLDER, 1)
+            copy_source = {'Bucket': BUCKET_NAME, 'Key': original_key}
             
-            # Definir el origen para la operación de copia.
-            copy_source = {
-                'Bucket': bucket_name,
-                'Key': original_key
-            }
-            
-            # Ejecutar la copia, lo que efectivamente crea el nuevo objeto en la ruta de destino.
-            s3.copy_object(
-                CopySource=copy_source,
-                Bucket=bucket_name,
-                Key=destino_key
-            )
-            print(f"  -> Copiado: {original_key}  ->  {destino_key}")
+            s3.copy_object(CopySource=copy_source, Bucket=BUCKET_NAME, Key=destino_key)
+            print(f"   -> Copiado: {original_key} -> {destino_key}")
 
-        print(f"✅ Estructura en la nube creada exitosamente para '{empresa_id}'.")
+        print(f"✅ Estructura para la sucursal en '{ruta_cloud_sucursal}' creada exitosamente.")
         return True
-        
     except Exception as e:
-        print(f"❌ Error crítico en inicializar_empresa_nueva: {e}")
+        print(f"❌ Error creando estructura de sucursal: {e}")
         return False
