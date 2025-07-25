@@ -72,11 +72,14 @@ class TerminalVerificationResponse(BaseModel):
     """Schema para la respuesta exitosa de verificación."""
     access_token: str
     token_type: str = "bearer"
-    id_empresa: int
+    id_empresa: str
     nombre_empresa: str
     id_sucursal: int
     nombre_sucursal: str
     estado_suscripcion: str # <-- AÑADIR ESTA LÍNEA
+    
+    class Config:
+        orm_mode = True
     
 class SucursalCreate(BaseModel):
     """Modelo para la creación de una sucursal. Solo necesitamos el nombre."""
