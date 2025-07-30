@@ -1,3 +1,6 @@
+#migrate_db.py este script solo esta de forma "prueba" para ejecutar bases de datos y crearlas.
+
+
 import os
 import sqlite3
 import boto3

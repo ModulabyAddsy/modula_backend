@@ -369,3 +369,52 @@ def crear_nueva_sucursal(id_cuenta: int, id_empresa_addsy: str, nombre_sucursal:
     finally:
         if conn: conn.close()
 
+def buscar_sucursal_por_ip_en_otra_terminal(id_terminal_actual: str, ip: str, id_cuenta: int):
+    """
+    Busca si otra terminal de la misma cuenta comparte la misma IP,
+    lo que sugiere que el usuario está en una sucursal ya registrada.
+    """
+    conn = get_connection()
+    if not conn: return None
+    query = """
+        SELECT s.id, s.nombre FROM modula_terminales t
+        JOIN sucursales s ON t.id_sucursal = s.id
+        WHERE t.id_cuenta_addsy = %s AND t.direccion_ip = %s AND t.id_terminal != %s
+        LIMIT 1;
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, (id_cuenta, ip, id_terminal_actual))
+            return cur.fetchone()
+    finally:
+        if conn: conn.close()
+
+def get_sucursales_por_cuenta(id_cuenta: int):
+    """Obtiene una lista de todas las sucursales de una cuenta."""
+    conn = get_connection()
+    if not conn: return []
+    query = "SELECT id, nombre FROM sucursales WHERE id_cuenta_addsy = %s ORDER BY nombre;"
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, (id_cuenta,))
+            return cur.fetchall()
+    finally:
+        if conn: conn.close()
+
+def actualizar_sucursal_de_terminal(id_terminal: str, id_sucursal_nueva: int):
+    """Mueve una terminal a una nueva sucursal."""
+    conn = get_connection()
+    if not conn: return False
+    query = "UPDATE modula_terminales SET id_sucursal = %s WHERE id_terminal = %s;"
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, (id_sucursal_nueva, id_terminal))
+            updated_rows = cur.rowcount
+        conn.commit()
+        return updated_rows > 0
+    except Exception as e:
+        conn.rollback()
+        print(f"🔥🔥 ERROR al actualizar sucursal de terminal: {e}")
+        return False
+    finally:
+        if conn: conn.close()

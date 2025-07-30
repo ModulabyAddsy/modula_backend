@@ -23,7 +23,9 @@ from app.services.db import (
     buscar_terminal_activa_por_id,
     actualizar_y_verificar_suscripcion,
     actualizar_contadores_suscripcion,
-    get_terminales_por_cuenta # <-- ESTA ES LA FUNCIÓN QUE FALTABA IMPORTAR
+    get_terminales_por_cuenta, # <-- ESTA ES LA FUNCIÓN QUE FALTABA IMPORTA
+    buscar_sucursal_por_ip_en_otra_terminal, # <--- NUEVA
+    get_sucursales_por_cuenta        # <--- NUEVA
 )
 from app.services import security
 
@@ -161,23 +163,49 @@ def verificar_terminal_activa_controller(
         estado = suscripcion['estado_suscripcion'] if suscripcion else 'desconocido'
         raise HTTPException(status_code=403, detail=f"Suscripción no válida. Estado: {estado}")
 
-    actualizar_ip_terminal(request_data.id_terminal, client_ip)
+    # --- INICIA LA NUEVA LÓGICA DE VERIFICACIÓN DE IP ---
+    ip_registrada = terminal_info.get('direccion_ip')
     
-    actualizar_contadores_suscripcion(id_cuenta)
+    # Escenario 1: La IP coincide (o es el primer uso y no hay IP registrada).
+    if not ip_registrada or ip_registrada == client_ip:
+        actualizar_ip_terminal(request_data.id_terminal, client_ip)
+        actualizar_contadores_suscripcion(id_cuenta)
+        
+        access_token_data = {
+            "sub": terminal_info["correo"],
+            "id": id_cuenta,
+            "id_empresa_addsy": terminal_info["id_empresa_addsy"]
+        }
+        access_token = security.crear_access_token(data=access_token_data)
+        
+        return models.TerminalVerificationResponse(
+            access_token=access_token,
+            id_empresa=terminal_info["id_empresa_addsy"],
+            nombre_empresa=terminal_info["nombre_empresa"],
+            id_sucursal=terminal_info["id_sucursal"],
+            nombre_sucursal=terminal_info["nombre_sucursal"],
+            estado_suscripcion=suscripcion['estado_suscripcion']
+        )
     
-    # --- CORRECCIÓN CRÍTICA: Añadir id_empresa_addsy al token ---
-    access_token_data = {
-        "sub": terminal_info["correo"], # Usar el correo como 'sub', igual que en el login
-        "id": id_cuenta,
-        "id_empresa_addsy": terminal_info["id_empresa_addsy"]
-    }
-    access_token = security.crear_access_token(data=access_token_data)
-    
-    return models.TerminalVerificationResponse(
-        access_token=access_token,
-        id_empresa=terminal_info["id_empresa_addsy"],
-        nombre_empresa=terminal_info["nombre_empresa"],
-        id_sucursal=terminal_info["id_sucursal"],
-        nombre_sucursal=terminal_info["nombre_sucursal"],
-        estado_suscripcion=suscripcion['estado_suscripcion']
-    )
+    # Escenario 2: La IP NO coincide. Preparamos una respuesta de conflicto.
+    else:
+        print(f"⚠️ Conflicto de ubicación para terminal {request_data.id_terminal}. IP registrada: {ip_registrada}, IP actual: {client_ip}")
+        
+        # Buscamos si la IP actual coincide con otra sucursal
+        sucursal_sugerida_dict = buscar_sucursal_por_ip_en_otra_terminal(
+            id_terminal_actual=request_data.id_terminal,
+            ip=client_ip,
+            id_cuenta=id_cuenta
+        )
+        sugerencia = models.SucursalInfo(**sucursal_sugerida_dict) if sucursal_sugerida_dict else None
+
+        # Obtenemos todas las sucursales para la opción de asignación manual
+        lista_sucursales_dict = get_sucursales_por_cuenta(id_cuenta)
+        lista_sucursales = [models.SucursalInfo(**s) for s in lista_sucursales_dict]
+
+        # Devolvemos la respuesta especial SIN token de acceso
+        return models.TerminalVerificationResponse(
+            status="location_mismatch",
+            sugerencia_migracion=sugerencia,
+            sucursales_existentes=lista_sucursales
+        )

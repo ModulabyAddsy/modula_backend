@@ -62,6 +62,10 @@ class Terminal(TerminalBase):
     class Config:
         orm_mode = True
         
+class SucursalInfo(BaseModel):
+    """Modelo simple para listas de sucursales."""
+    id: int
+    nombre: str
 
 class TerminalVerificationRequest(BaseModel):
     """Schema para la petición de verificación de terminal."""
@@ -78,6 +82,11 @@ class TerminalVerificationResponse(BaseModel):
     nombre_sucursal: str
     estado_suscripcion: str # <-- AÑADIR ESTA LÍNEA
     
+    # --- NUEVOS CAMPOS PARA MANEJAR CONFLICTOS ---
+    status: str = Field(default="ok", example="location_mismatch")
+    sugerencia_migracion: Optional[SucursalInfo] = None
+    sucursales_existentes: Optional[List[SucursalInfo]] = None
+
     class Config:
         orm_mode = True
     
@@ -96,3 +105,13 @@ class Sucursal(BaseModel):
 
     class Config:
         orm_mode = True # Permite que el modelo se cree desde un objeto de BD
+
+class AsignarTerminalRequest(BaseModel):
+    """Modelo para la petición de migrar o asignar una terminal."""
+    id_terminal_origen: str
+    id_sucursal_destino: int
+
+class CrearSucursalYAsignarRequest(BaseModel):
+    """Modelo para crear sucursal y asignarle una terminal."""
+    id_terminal_origen: str
+    nombre_nueva_sucursal: str
