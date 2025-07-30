@@ -61,28 +61,25 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al contactar con el servicio de pago: {e}")
 
-
 # --- 2. INICIO DE SESIÓN ---
 async def login_para_access_token(form_data: LoginData, client_ip: str):
     """
-    Autentica, actualiza la IP de la primera terminal encontrada y devuelve un token.
+    Autentica al usuario y devuelve un token. No modifica el estado de la terminal.
     """
     cuenta = buscar_cuenta_addsy_por_correo(form_data.correo)
     if not cuenta or not verificar_contrasena(form_data.contrasena, cuenta["contrasena_hash"]):
-        raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Correo o contraseña incorrectos",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
         
     if cuenta["estatus_cuenta"] != "verificada":
         raise HTTPException(status_code=400, detail=f"La cuenta no ha sido verificada. Estatus: {cuenta['estatus_cuenta']}")
     
-    # NOTA: Esta lógica asume que se quiere actualizar la IP de la primera terminal
-    # de la cuenta. Funciona para el caso de un solo terminal.
+    # Simplemente obtenemos el ID de la primera terminal para devolverlo, sin actualizar nada.
     terminales = get_terminales_por_cuenta(cuenta["id"])
-    id_terminal_respuesta = None
-    if terminales:
-        id_terminal_a_actualizar = terminales[0]['id_terminal']
-        id_terminal_respuesta = id_terminal_a_actualizar
-        actualizar_ip_terminal(id_terminal_a_actualizar, client_ip)
-        print(f"IP actualizada para la terminal {id_terminal_a_actualizar} durante el login.")
+    id_terminal_respuesta = terminales[0]['id_terminal'] if terminales else None
     
     access_token_data = {
         "sub": cuenta["correo"], 
@@ -91,14 +88,12 @@ async def login_para_access_token(form_data: LoginData, client_ip: str):
     }
     access_token = crear_access_token(data=access_token_data)
     
-    # Se añade el id_terminal al response del login, para que el cliente lo guarde
-    # en su primer inicio de sesión.
+    # Se añade el id_terminal al response del login
     return {
         "access_token": access_token, 
         "token_type": "bearer", 
         "id_terminal": id_terminal_respuesta
     }
-
 
 # --- 3. VERIFICACIÓN DE CUENTA (LÓGICA ACTUALIZADA) ---
 async def verificar_cuenta(request: Request):
