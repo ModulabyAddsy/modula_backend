@@ -10,7 +10,7 @@ load_dotenv()
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 # ID de precio para el plan mensual de Modula
-MODULA_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
+BASE_PLAN_PRICE_ID = os.getenv("STRIPE_BASE_PLAN_PRICE_ID")
 
 async def crear_sesion_checkout_para_registro(nombre_completo: str, correo: str, id_terminal: str, aplica_prueba: bool):
     """
@@ -33,7 +33,7 @@ async def crear_sesion_checkout_para_registro(nombre_completo: str, correo: str,
             "payment_method_types": ["card"],
             "line_items": [
                 {
-                    "price": MODULA_PRICE_ID,
+                    "price": BASE_PLAN_PRICE_ID,
                     "quantity": 1,
                 }
             ],

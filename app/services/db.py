@@ -418,3 +418,21 @@ def actualizar_sucursal_de_terminal(id_terminal: str, id_sucursal_nueva: int):
         return False
     finally:
         if conn: conn.close()
+        
+def guardar_stripe_subscription_id(id_cuenta: int, stripe_sub_id: str):
+    conn = get_connection()
+    if not conn: return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE cuentas_addsy SET id_suscripcion_stripe = %s WHERE id = %s;",
+                (stripe_sub_id, id_cuenta)
+            )
+            conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"🔥🔥 ERROR guardando stripe_subscription_id: {e}")
+        return False
+    finally:
+        if conn: conn.close()
