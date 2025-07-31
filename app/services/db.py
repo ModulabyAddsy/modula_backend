@@ -220,10 +220,10 @@ def buscar_terminal_activa_por_id(id_terminal: str):
     conn = get_connection()
     if not conn: return None
     
-    # --- CORRECCIÓN AQUÍ: Añadir 'c.correo' a la selección ---
+    # ✅ CORRECCIÓN: Añadir "t.direccion_ip" a la lista de columnas seleccionadas.
     query = """
         SELECT 
-            t.id_terminal, t.activa,
+            t.id_terminal, t.activa, t.direccion_ip,
             s.id as id_sucursal, s.nombre as nombre_sucursal,
             c.id as id_cuenta_addsy, c.id_empresa_addsy, c.nombre_empresa, c.correo
         FROM 
