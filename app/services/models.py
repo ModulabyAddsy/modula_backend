@@ -73,17 +73,23 @@ class TerminalVerificationRequest(BaseModel):
 
 
 class TerminalVerificationResponse(BaseModel):
-    """Schema para la respuesta exitosa de verificación."""
-    access_token: str
+    """
+    Schema para la respuesta de verificación.
+    Ahora los campos de éxito son opcionales.
+    """
+    # --- Campos para respuesta exitosa (AHORA OPCIONALES) ---
+    access_token: Optional[str] = None
+    id_empresa: Optional[str] = None
+    nombre_empresa: Optional[str] = None
+    id_sucursal: Optional[int] = None
+    nombre_sucursal: Optional[str] = None
+    estado_suscripcion: Optional[str] = None
+
+    # --- Campos siempre presentes o con default ---
     token_type: str = "bearer"
-    id_empresa: str
-    nombre_empresa: str
-    id_sucursal: int
-    nombre_sucursal: str
-    estado_suscripcion: str # <-- AÑADIR ESTA LÍNEA
-    
-    # --- NUEVOS CAMPOS PARA MANEJAR CONFLICTOS ---
     status: str = Field(default="ok", example="location_mismatch")
+    
+    # --- Campos para manejar conflictos (opcionales por naturaleza) ---
     sugerencia_migracion: Optional[SucursalInfo] = None
     sucursales_existentes: Optional[List[SucursalInfo]] = None
 
