@@ -50,7 +50,13 @@ def crear_sucursal_y_asignar_terminal(request_data: CrearSucursalYAsignarRequest
     # 3. Actualizar contadores
     actualizar_contadores_suscripcion(current_user['id'])
     
-    # 4. Crear un nuevo token para que el cliente inicie sesión inmediatamente
-    access_token = security.crear_access_token(data=current_user)
+    # ✅ CORRECCIÓN: Crear un diccionario limpio para el nuevo token
+    # en lugar de pasar el 'current_user' completo.
+    access_token_data = {
+        "sub": current_user.get("sub"),  # El 'sub' generalmente es el correo
+        "id": current_user.get("id"),
+        "id_empresa_addsy": current_user.get("id_empresa_addsy")
+    }
+    access_token = security.crear_access_token(data=access_token_data)
     
     return Token(access_token=access_token, token_type="bearer", id_terminal=request_data.id_terminal_origen)
