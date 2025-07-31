@@ -1,11 +1,9 @@
-# app/routes/terminal.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from typing import List
 from app.controller import terminal_controller
 from app.services.security import get_current_active_user
 from app.services.models import (Terminal, TerminalCreate, AsignarTerminalRequest, 
-                                 CrearSucursalYAsignarRequest, Token) # Añadir nuevos modelos
-
+                                 CrearSucursalYAsignarRequest, Token)
 
 router = APIRouter()
 
@@ -21,16 +19,20 @@ def crear_nueva_terminal(terminal: TerminalCreate, current_user: dict = Depends(
 
 @router.post("/asignar-a-sucursal", status_code=200)
 def endpoint_asignar_terminal(
+    # ✅ CORRECCIÓN: 'request' debe ir antes de los argumentos con valor por defecto.
+    request: Request, 
     request_data: AsignarTerminalRequest,
     current_user: dict = Depends(get_current_active_user)
 ):
     """Asigna o migra una terminal a una sucursal existente."""
-    return terminal_controller.migrar_terminal_a_sucursal(request_data, current_user)
+    return terminal_controller.migrar_terminal_a_sucursal(request_data, current_user, request)
 
 @router.post("/crear-sucursal-y-asignar", response_model=Token, status_code=201)
 def endpoint_crear_sucursal_y_asignar(
+    # ✅ CORRECCIÓN: 'request' debe ir antes de los argumentos con valor por defecto.
+    request: Request,
     request_data: CrearSucursalYAsignarRequest,
     current_user: dict = Depends(get_current_active_user)
 ):
     """Crea una nueva sucursal y le asigna la terminal de origen."""
-    return terminal_controller.crear_sucursal_y_asignar_terminal(request_data, current_user)
+    return terminal_controller.crear_sucursal_y_asignar_terminal(request_data, current_user, request)
