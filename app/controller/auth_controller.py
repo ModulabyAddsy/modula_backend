@@ -64,7 +64,7 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
 # --- 2. INICIO DE SESIÓN ---
 async def login_para_access_token(form_data: LoginData, client_ip: str):
     """
-    Autentica al usuario y devuelve un token. No modifica el estado de la terminal.
+    Autentica al usuario y devuelve un token. Su única responsabilidad es la identidad.
     """
     cuenta = buscar_cuenta_addsy_por_correo(form_data.correo)
     if not cuenta or not verificar_contrasena(form_data.contrasena, cuenta["contrasena_hash"]):
@@ -77,10 +77,6 @@ async def login_para_access_token(form_data: LoginData, client_ip: str):
     if cuenta["estatus_cuenta"] != "verificada":
         raise HTTPException(status_code=400, detail=f"La cuenta no ha sido verificada. Estatus: {cuenta['estatus_cuenta']}")
     
-    # Simplemente obtenemos el ID de la primera terminal para devolverlo, sin actualizar nada.
-    terminales = get_terminales_por_cuenta(cuenta["id"])
-    id_terminal_respuesta = terminales[0]['id_terminal'] if terminales else None
-    
     access_token_data = {
         "sub": cuenta["correo"], 
         "id": cuenta["id"],
@@ -88,11 +84,10 @@ async def login_para_access_token(form_data: LoginData, client_ip: str):
     }
     access_token = crear_access_token(data=access_token_data)
     
-    # Se añade el id_terminal al response del login
+    # ✅ CORRECCIÓN: Ya no devolvemos el id_terminal aquí.
     return {
         "access_token": access_token, 
-        "token_type": "bearer", 
-        "id_terminal": id_terminal_respuesta
+        "token_type": "bearer"
     }
 
 # --- 3. VERIFICACIÓN DE CUENTA (LÓGICA ACTUALIZADA) ---
