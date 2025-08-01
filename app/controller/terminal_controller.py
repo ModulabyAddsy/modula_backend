@@ -18,14 +18,13 @@ def registrar_nueva_terminal(terminal_data: TerminalCreate, current_user: dict, 
     """Registra una nueva terminal para la cuenta del usuario."""
     id_cuenta = current_user.get('id')
     client_ip = request.client.host
-    # Pasar la IP a la función de la base de datos
+    
+    # ✅ CORRECCIÓN: Pasar el 'client_ip' como tercer argumento
     nueva_terminal = crear_terminal(id_cuenta, terminal_data.dict(), client_ip)
     
-    nueva_terminal = crear_terminal(id_cuenta, terminal_data.dict())
     if not nueva_terminal:
         raise HTTPException(status_code=500, detail="Error al registrar la nueva terminal en la base de datos.")
 
-    # ✅ 2. Actualizar contadores y sincronizar con Stripe
     actualizar_contadores_suscripcion(id_cuenta)
     sincronizar_suscripcion_con_db(id_cuenta)
     
