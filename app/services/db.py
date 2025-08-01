@@ -99,11 +99,11 @@ def verificar_token_y_activar_cuenta(token: str):
 
 def activar_suscripcion_y_terminal(id_cuenta: int, id_empresa_addsy: str, id_terminal_uuid: str, id_stripe: str):
     """
-    Activa la suscripción, crea la primera sucursal, la primera terminal
-    y guarda la ruta de la nube para la sucursal.
+    Activa la suscripción, crea la primera sucursal y la primera terminal.
+    YA NO GUARDA EL ID DE STRIPE.
     """
     conn = get_connection()
-    if not conn: return None, None  # Devolvemos None para la ruta si falla la conexión
+    if not conn: return None, None
 
     try:
         with conn.cursor() as cur:
@@ -123,12 +123,9 @@ def activar_suscripcion_y_terminal(id_cuenta: int, id_empresa_addsy: str, id_ter
             )
             sucursal_id = cur.fetchone()['id']
 
-            # 3. CONSTRUIR Y GUARDAR LA RUTA DE LA NUBE (NUEVO)
-            # Construimos la ruta usando el ID de la empresa y el nuevo ID de la sucursal
+            # 3. Construir y guardar la ruta de la nube
             ruta_cloud_sucursal = f"{id_empresa_addsy}/suc_{sucursal_id}/"
             print(f"🔗 Vinculando sucursal ID {sucursal_id} con la ruta: {ruta_cloud_sucursal}")
-            
-            # Actualizamos el registro de la sucursal con su ruta en la nube
             cur.execute(
                 "UPDATE sucursales SET ruta_cloud = %s WHERE id = %s;",
                 (ruta_cloud_sucursal, sucursal_id)
@@ -140,20 +137,14 @@ def activar_suscripcion_y_terminal(id_cuenta: int, id_empresa_addsy: str, id_ter
                 (id_terminal_uuid, id_cuenta, sucursal_id, 'Terminal Principal')
             )
             
-            # 5. Actualizar la cuenta con el ID de Stripe
-            cur.execute(
-                "UPDATE cuentas_addsy SET id_suscripcion_stripe = %s WHERE id = %s;", 
-                (id_stripe, id_cuenta)
-            )
+            # 5. BLOQUE ELIMINADO - Ya no actualizamos el ID de Stripe desde aquí.
             
             conn.commit()
             print(f"✅ Suscripción, sucursal y terminal activadas para cuenta ID {id_cuenta}.")
-            # Devolvemos True y la ruta creada para que el endpoint pueda usarla
             return True, ruta_cloud_sucursal
     except Exception as e:
         conn.rollback()
         print(f"🔥🔥 ERROR en la activación de servicios: {e}")
-        # Devolvemos False y None en caso de error
         return False, None
     finally:
         if conn: conn.close()
