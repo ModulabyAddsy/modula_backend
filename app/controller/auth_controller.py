@@ -184,7 +184,7 @@ def verificar_terminal_activa_controller(
         )
 
     # Escenario 2: La IP registrada coincide con la IP actual. Acceso normal.
-    elif ip_registrada == client_ip.strip():
+    elif ip_registrada.strip() == client_ip.strip():
         # No es necesario actualizar la IP si es la misma, pero sí el contador y la última sincronización.
         actualizar_contadores_suscripcion(id_cuenta)
         
