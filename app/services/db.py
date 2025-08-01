@@ -3,7 +3,7 @@ import os
 import psycopg
 from psycopg.rows import dict_row
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone # Asegúrate de importar timezone
 from uuid import UUID
 
 def get_connection():
@@ -424,6 +424,50 @@ def guardar_stripe_subscription_id(id_cuenta: int, stripe_sub_id: str):
     except Exception as e:
         conn.rollback()
         print(f"🔥🔥 ERROR guardando stripe_subscription_id: {e}")
+        return False
+    finally:
+        if conn: conn.close()
+        
+def actualizar_suscripcion_tras_pago(stripe_sub_id: str, nuevo_periodo_fin_ts: int):
+    """
+    Busca una suscripción por su ID de Stripe y actualiza su estado a 'activa'
+    y la fecha de vencimiento con el nuevo periodo.
+    """
+    conn = get_connection()
+    if not conn: return False
+    
+    # Convertir el timestamp de Stripe a un objeto datetime
+    nuevo_vencimiento = datetime.fromtimestamp(nuevo_periodo_fin_ts, tz=timezone.utc)
+    
+    try:
+        with conn.cursor() as cur:
+            # Encontramos el id_cuenta_addsy a través de la tabla cuentas_addsy
+            cur.execute(
+                "SELECT id FROM cuentas_addsy WHERE id_suscripcion_stripe = %s;",
+                (stripe_sub_id,)
+            )
+            cuenta = cur.fetchone()
+            if not cuenta:
+                print(f"ℹ️ Webhook 'invoice.paid' recibido para sub {stripe_sub_id}, pero no se encontró cuenta asociada.")
+                return False
+            
+            id_cuenta = cuenta['id']
+
+            # Actualizamos la tabla de suscripciones
+            cur.execute(
+                """
+                UPDATE suscripciones_software
+                SET estado_suscripcion = 'activa', fecha_vencimiento = %s
+                WHERE id_cuenta_addsy = %s;
+                """,
+                (nuevo_vencimiento, id_cuenta)
+            )
+            conn.commit()
+            print(f"✅ Suscripción para cuenta {id_cuenta} (Stripe: {stripe_sub_id}) actualizada a 'activa' hasta {nuevo_vencimiento}.")
+            return True
+    except Exception as e:
+        conn.rollback()
+        print(f"🔥🔥 ERROR actualizando suscripción tras pago: {e}")
         return False
     finally:
         if conn: conn.close()

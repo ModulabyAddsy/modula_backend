@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 
 # 👉 Importamos las funciones correctas
-from app.services.db import buscar_cuenta_addsy_por_correo, actualizar_cuenta_para_verificacion, guardar_stripe_subscription_id
+from app.services.db import buscar_cuenta_addsy_por_correo, actualizar_cuenta_para_verificacion, guardar_stripe_subscription_id,actualizar_suscripcion_tras_pago
 from app.services.utils import generar_token_verificacion
 from app.services.mail import enviar_correo_verificacion
 
@@ -26,44 +26,46 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
     except stripe.error.SignatureVerificationError as e:
         raise HTTPException(status_code=400, detail=f"Invalid signature: {e}")
 
+    # --- MANEJADOR PARA EL ALTA DE NUEVOS CLIENTES ---
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         metadata = session.get("metadata")
         stripe_subscription_id = session.get("subscription")
-        session_id = session.get("id") # ✅ CORRECCIÓN 1: Volver a añadir esta línea
+        session_id = session.get("id")
 
         if not metadata or "correo_usuario" not in metadata:
-            print("❌ Error: Webhook recibido sin correo_usuario en los metadatos.")
+            print("❌ Error: Webhook 'checkout.session.completed' sin correo_usuario.")
             return {"status": "error", "detail": "Missing metadata"}
 
         correo = metadata["correo_usuario"]
-        id_terminal = metadata.get("id_terminal")
-
         cuenta = buscar_cuenta_addsy_por_correo(correo)
-        if not cuenta:
-            print(f"❌ Error: Cuenta con correo {correo} no encontrada en la BD.")
-            return {"status": "error", "detail": "User not found"}
-
-        # La lógica principal solo se ejecuta si la cuenta está pendiente de pago
-        if cuenta["estatus_cuenta"] == "pendiente_pago":
+        
+        if cuenta and cuenta["estatus_cuenta"] == "pendiente_pago":
             token, token_expira = generar_token_verificacion()
             actualizar_cuenta_para_verificacion(correo, token, token_expira)
-            
-            # El id_stripe_session ahora está definido y no causará error
             enviar_correo_verificacion(
-                destinatario=correo,
-                nombre_usuario=cuenta["nombre_completo"],
-                token=token,
-                id_terminal=id_terminal,
+                destinatario=correo, nombre_usuario=cuenta["nombre_completo"],
+                token=token, id_terminal=metadata.get("id_terminal"),
                 id_stripe_session=session_id
             )
-
-            # ✅ CORRECCIÓN 2: Mover el guardado del ID aquí adentro
             guardar_stripe_subscription_id(cuenta["id"], stripe_subscription_id)
-
-            # ✅ CORRECCIÓN 3: Dejar solo una línea de log de éxito
-            print(f"✅ Pago completado para {correo}. Correo de verificación enviado y sub ID guardado.")
+            print(f"✅ Alta de {correo} procesada. Correo de verificación enviado y sub ID guardado.")
         else:
-            print(f"ℹ️ Webhook recibido para {correo}, pero su estatus no es 'pendiente_pago' (es {cuenta['estatus_cuenta']}). Se ignora.")
+            print(f"ℹ️ Webhook 'checkout.session.completed' para {correo} ignorado (estado no es 'pendiente_pago').")
+
+    # --- ✅ NUEVO MANEJADOR PARA PAGOS RECURRENTES EXITOSOS ---
+    elif event["type"] == "invoice.paid":
+        invoice = event["data"]["object"]
+        
+        # Nos aseguramos de que el pago fue exitoso y está asociado a una suscripción
+        if invoice.get("paid") and invoice.get("subscription"):
+            stripe_sub_id = invoice.get("subscription")
+            # El 'period_end' de Stripe es un timestamp (número de segundos desde 1970)
+            nuevo_periodo_fin_ts = invoice.get("period_end")
+            
+            # Llamamos a nuestra nueva función de DB para actualizar el estado
+            actualizar_suscripcion_tras_pago(stripe_sub_id, nuevo_periodo_fin_ts)
+        else:
+            print("ℹ️ Webhook 'invoice.paid' ignorado (no está pagado o no es de una suscripción).")
 
     return {"status": "ok"}
