@@ -1,6 +1,6 @@
 # app/controller/sucursal_controller.py
 from fastapi import HTTPException
-from app.services.db import crear_nueva_sucursal
+from app.services.db import crear_nueva_sucursal, get_sucursales_por_cuenta
 from app.services.cloud.setup_empresa_cloud import crear_estructura_sucursal
 from app.services.models import SucursalCreate
 
@@ -31,3 +31,8 @@ def registrar_nueva_sucursal(sucursal_data: SucursalCreate, current_user: dict):
         raise HTTPException(status_code=500, detail="La sucursal se creó en la BD, pero falló la creación de su carpeta en la nube.")
 
     return nueva_sucursal
+
+def get_mis_sucursales(current_user: dict):
+    """Obtiene las sucursales del usuario actualmente autenticado."""
+    id_cuenta = current_user.get('id')
+    return get_sucursales_por_cuenta(id_cuenta)
