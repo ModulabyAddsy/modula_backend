@@ -174,21 +174,21 @@ def get_terminales_por_cuenta(id_cuenta: int):
     finally:
         if conn: conn.close()
 
-def crear_terminal(id_cuenta: int, terminal_data: dict):
+def crear_terminal(id_cuenta: int, terminal_data: dict, client_ip: str): 
     conn = get_connection()
     if not conn: return None
     sql = """
         INSERT INTO modula_terminales 
-            (id_terminal, id_cuenta_addsy, id_sucursal, nombre_terminal, activa)
-        VALUES (%s, %s, %s, %s, true)
+            (id_terminal, id_cuenta_addsy, id_sucursal, nombre_terminal, activa, direccion_ip)
+        VALUES (%s, %s, %s, %s, true, %s) 
         RETURNING *;
     """
-    # 👉 CORRECCIÓN: Usar la columna 'id_cuenta_addsy' en el INSERT
     params = (
         terminal_data['id_terminal'],
         id_cuenta,
         terminal_data['id_sucursal'],
-        terminal_data['nombre_terminal']
+        terminal_data['nombre_terminal'],
+        client_ip 
     )
     try:
         with conn.cursor() as cur:

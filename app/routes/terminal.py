@@ -13,9 +13,13 @@ def leer_terminales_usuario(current_user: dict = Depends(get_current_active_user
     return terminal_controller.get_mis_terminales(current_user)
 
 @router.post("/", response_model=Terminal, status_code=201)
-def crear_nueva_terminal(terminal: TerminalCreate, current_user: dict = Depends(get_current_active_user)):
+def crear_nueva_terminal(
+    terminal: TerminalCreate, 
+    request: Request, # <-- Añadir request
+    current_user: dict = Depends(get_current_active_user)
+):
     """Endpoint protegido para registrar una nueva terminal."""
-    return terminal_controller.registrar_nueva_terminal(terminal, current_user)
+    return terminal_controller.registrar_nueva_terminal(terminal, current_user, request) # <-- Pasar request
 
 @router.post("/asignar-a-sucursal", status_code=200)
 def endpoint_asignar_terminal(

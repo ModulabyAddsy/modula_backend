@@ -14,9 +14,12 @@ def get_mis_terminales(current_user: dict):
     id_cuenta = current_user.get('id')
     return get_terminales_por_cuenta(id_cuenta)
 
-def registrar_nueva_terminal(terminal_data: TerminalCreate, current_user: dict):
+def registrar_nueva_terminal(terminal_data: TerminalCreate, current_user: dict, request: Request):
     """Registra una nueva terminal para la cuenta del usuario."""
     id_cuenta = current_user.get('id')
+    client_ip = request.client.host
+    # Pasar la IP a la función de la base de datos
+    nueva_terminal = crear_terminal(id_cuenta, terminal_data.dict(), client_ip)
     
     nueva_terminal = crear_terminal(id_cuenta, terminal_data.dict())
     if not nueva_terminal:
