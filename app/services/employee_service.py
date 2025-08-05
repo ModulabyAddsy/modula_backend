@@ -1,25 +1,27 @@
 # app/services/employee_service.py
 import sqlite3
 import io
+import os
 from datetime import datetime
 from app.services.security import hash_contrasena
 
 def anadir_primer_administrador(db_bytes: bytes, datos_propietario: dict, username_empleado: str, contrasena_temporal: str) -> bytes | None:
     """
-    Toma el contenido de una base de datos SQLite (en bytes), añade el primer 
-    registro de administrador a la tabla 'empleados' y la devuelve como bytes.
+    Toma el contenido de una DB SQLite (en bytes), guarda los cambios en un
+    archivo temporal y devuelve los bytes modificados.
     """
+    # Usaremos un nombre de archivo temporal único para evitar conflictos
+    temp_db_path = f"temp_{username_empleado}.sqlite"
+    
     try:
-        # Convertimos los bytes a un stream para que sqlite3 pueda leerlo
-        db_stream = io.BytesIO(db_bytes)
-        
-        # Guardamos el stream en un archivo temporal en memoria para la conexión
-        with sqlite3.connect(':memory:') as con_mem:
-            con_mem.executescript(db_stream.read().decode('utf-8'))
-            
-            # Insertar el primer registro del administrador/propietario
+        # 1. Escribir los bytes descargados a un archivo temporal
+        with open(temp_db_path, "wb") as f:
+            f.write(db_bytes)
+
+        # 2. Conectar al archivo temporal y modificarlo
+        with sqlite3.connect(temp_db_path) as con:
             contrasena_hash_temporal = hash_contrasena(contrasena_temporal)
-            cur = con_mem.cursor()
+            cur = con.cursor()
             cur.execute("""
                 INSERT INTO empleados (
                     nombre_usuario, nombre_completo, contrasena_hash, correo_recuperacion,
@@ -38,16 +40,18 @@ def anadir_primer_administrador(db_bytes: bytes, datos_propietario: dict, userna
                 datetime.utcnow(),
                 datos_propietario['id']
             ))
-            con_mem.commit()
+            con.commit()
 
-            # Volvemos a guardar la base de datos modificada en un buffer de bytes
-            buffer_modificado = io.BytesIO()
-            for line in con_mem.iterdump():
-                buffer_modificado.write(f'{line}\n'.encode('utf-8'))
-            buffer_modificado.seek(0)
-
-            return buffer_modificado.getvalue()
+        # 3. Leer los bytes del archivo modificado para devolverlos
+        with open(temp_db_path, "rb") as f:
+            db_bytes_modificado = f.read()
+        
+        return db_bytes_modificado
 
     except Exception as e:
         print(f"🔥🔥 ERROR añadiendo el primer administrador a la DB de empleados: {e}")
         return None
+    finally:
+        # 4. Asegurarse de borrar el archivo temporal
+        if os.path.exists(temp_db_path):
+            os.remove(temp_db_path)
