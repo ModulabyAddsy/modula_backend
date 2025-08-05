@@ -4,6 +4,8 @@
 import bcrypt
 import secrets
 from datetime import datetime, timedelta
+import secrets
+import string
 
 # Genera un token único para verificación con expiración de 20 minutos
 def generar_token_verificacion():
@@ -14,3 +16,8 @@ def generar_token_verificacion():
 # (Opcional) Genera un nuevo ID de empresa tipo MOD_EMP_1005 (si lo usas manualmente)
 def generar_id_empresa_nuevo(numero: int) -> str:
     return f"MOD_EMP_{1000 + numero}"
+
+def generar_contrasena_temporal(longitud=8):
+    """Genera una contraseña alfanumérica segura."""
+    alfabeto = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alfabeto) for i in range(longitud))

@@ -97,3 +97,24 @@ def crear_estructura_sucursal(ruta_cloud_sucursal: str) -> bool:
     except Exception as e:
         print(f"❌ Error creando estructura de sucursal: {e}")
         return False
+
+def subir_archivo_db(ruta_cloud_destino: str, contenido_archivo: bytes) -> bool:
+    """Sube un archivo de base de datos (en bytes) a una ruta específica en R2."""
+    try:
+        s3.put_object(Bucket=BUCKET_NAME, Key=ruta_cloud_destino, Body=contenido_archivo)
+        print(f"✅ Archivo subido exitosamente a '{ruta_cloud_destino}'.")
+        return True
+    except Exception as e:
+        print(f"❌ Error subiendo archivo a R2 en '{ruta_cloud_destino}': {e}")
+        return False
+    
+def descargar_archivo_db(ruta_cloud_origen: str) -> bytes | None:
+    """Descarga un archivo desde una ruta de R2 y lo devuelve como bytes."""
+    try:
+        response = s3.get_object(Bucket=BUCKET_NAME, Key=ruta_cloud_origen)
+        print(f"✅ Archivo descargado exitosamente de '{ruta_cloud_origen}'.")
+        return response['Body'].read()
+    except Exception as e:
+        # Es normal que aquí pueda dar un error si el archivo no existe aún
+        print(f"⚠️  No se pudo descargar el archivo de R2 en '{ruta_cloud_origen}': {e}")
+        return None

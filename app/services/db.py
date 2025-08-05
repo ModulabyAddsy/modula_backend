@@ -99,11 +99,11 @@ def verificar_token_y_activar_cuenta(token: str):
 
 def activar_suscripcion_y_terminal(id_cuenta: int, id_empresa_addsy: str, id_terminal_uuid: str, id_stripe: str):
     """
-    Activa la suscripción, crea la primera sucursal y la primera terminal.
-    YA NO GUARDA EL ID DE STRIPE.
+    Activa la suscripción, crea la primera sucursal y terminal, y devuelve
+    un diccionario con los resultados.
     """
     conn = get_connection()
-    if not conn: return None, None
+    if not conn: return {'exito': False}
 
     try:
         with conn.cursor() as cur:
@@ -123,6 +123,7 @@ def activar_suscripcion_y_terminal(id_cuenta: int, id_empresa_addsy: str, id_ter
             )
             sucursal_id = cur.fetchone()['id']
 
+            # ✅ BLOQUE DE CÓDIGO RESTAURADO
             # 3. Construir y guardar la ruta de la nube
             ruta_cloud_sucursal = f"{id_empresa_addsy}/suc_{sucursal_id}/"
             print(f"🔗 Vinculando sucursal ID {sucursal_id} con la ruta: {ruta_cloud_sucursal}")
@@ -137,15 +138,19 @@ def activar_suscripcion_y_terminal(id_cuenta: int, id_empresa_addsy: str, id_ter
                 (id_terminal_uuid, id_cuenta, sucursal_id, 'Terminal Principal')
             )
             
-            # 5. BLOQUE ELIMINADO - Ya no actualizamos el ID de Stripe desde aquí.
-            
             conn.commit()
             print(f"✅ Suscripción, sucursal y terminal activadas para cuenta ID {id_cuenta}.")
-            return True, ruta_cloud_sucursal
+            
+            # Ahora la función puede devolver el diccionario completo sin errores
+            return {
+                'exito': True, 
+                'ruta_cloud': ruta_cloud_sucursal, 
+                'id_sucursal': sucursal_id
+            }
     except Exception as e:
         conn.rollback()
         print(f"🔥🔥 ERROR en la activación de servicios: {e}")
-        return False, None
+        return {'exito': False}
     finally:
         if conn: conn.close()
         

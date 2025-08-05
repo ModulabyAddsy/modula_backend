@@ -48,3 +48,13 @@ def enviar_correo_verificacion(destinatario, nombre_usuario, token, id_terminal,
             print(f"📧 Correo enviado a {destinatario}")
     except Exception as e:
         print(f"❌ Error al enviar correo: {e}")
+        
+def enviar_correo_credenciales(destinatario: str, nombre_usuario: str, username_empleado: str, contrasena_temporal: str):
+    # Lógica para construir y enviar un correo con el siguiente texto:
+    # "Hola {nombre_usuario}, ¡Bienvenido a Modula!
+    # Ya puedes iniciar sesión en la aplicación con tus credenciales de administrador:
+    # Usuario: {username_empleado}
+    # Contraseña Temporal: {contrasena_temporal}
+    # Por seguridad, se te pedirá cambiar tu contraseña en el primer inicio de sesión."
+    print(f"✉️  Correo de credenciales enviado a {destinatario} (Simulación).")
+    # Aquí iría la integración real con tu servicio de envío de correos.

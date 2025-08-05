@@ -10,7 +10,8 @@ from app.services.security import hash_contrasena, verificar_contrasena, crear_a
 # --- CAMBIO 1: Importar las nuevas funciones de la nube ---
 from app.services.cloud.setup_empresa_cloud import (
     crear_estructura_base_empresa, 
-    crear_estructura_sucursal
+    crear_estructura_sucursal,
+    descargar_archivo_db
 )
 
 # Importaciones para el endpoint de verificar la terminal
@@ -25,9 +26,14 @@ from app.services.db import (
     actualizar_contadores_suscripcion,
     get_terminales_por_cuenta, # <-- ESTA ES LA FUNCIÓN QUE FALTABA IMPORTA
     buscar_sucursal_por_ip_en_otra_terminal, # <--- NUEVA
-    get_sucursales_por_cuenta        # <--- NUEVA
+    get_sucursales_por_cuenta
 )
 from app.services import security
+
+from app.services.employee_service import anadir_primer_administrador
+from app.services.cloud.setup_empresa_cloud import subir_archivo_db
+from app.services.utils import generar_contrasena_temporal
+from app.services.mail import enviar_correo_credenciales
 
 #COMENTARIO PARA SUBIR A GITHUB
 
@@ -91,10 +97,10 @@ async def login_para_access_token(form_data: LoginData, client_ip: str):
     }
 
 # --- 3. VERIFICACIÓN DE CUENTA (LÓGICA ACTUALIZADA) ---
+
 async def verificar_cuenta(request: Request):
     """
-    Paso final del flujo: Se activa al hacer clic en el enlace del correo.
-    Verifica el token, activa la cuenta, la suscripción, la terminal y la nube.
+    Paso final del flujo: Activa todos los servicios y crea el primer usuario administrador.
     """
     token = request.query_params.get("token")
     id_terminal = request.query_params.get("id_terminal")
@@ -103,40 +109,68 @@ async def verificar_cuenta(request: Request):
     if not all([token, id_terminal, id_stripe_session]):
         return HTMLResponse("<h3>❌ Faltan parámetros en el enlace de verificación.</h3>", status_code=400)
 
-    resultado = verificar_token_y_activar_cuenta(token)
-    if isinstance(resultado, str):
-        return HTMLResponse(f"<h3>❌ Error: {resultado.replace('_', ' ').capitalize()}.</h3>", status_code=400)
-    if resultado is None:
+    cuenta_activada = verificar_token_y_activar_cuenta(token)
+    if isinstance(cuenta_activada, str):
+        return HTMLResponse(f"<h3>❌ Error: {cuenta_activada.replace('_', ' ').capitalize()}.</h3>", status_code=400)
+    if cuenta_activada is None:
         return HTMLResponse("<h3>❌ Ocurrió un error en el servidor al verificar tu cuenta.</h3>", status_code=500)
 
-    cuenta_activada = resultado
     id_empresa_addsy = cuenta_activada['id_empresa_addsy']
     print(f"✅ Cuenta verificada para: {cuenta_activada['correo']} ({id_empresa_addsy})")
     
-    # --- CAMBIO 2: Actualizar la llamada a la función de DB para pasar el id_empresa_addsy ---
-    exito_servicios, ruta_cloud_creada = activar_suscripcion_y_terminal(
-        id_cuenta=cuenta_activada['id'],
-        id_empresa_addsy=id_empresa_addsy, # Nuevo argumento
-        id_terminal_uuid=id_terminal,
-        id_stripe=id_stripe_session
+    # Activamos los servicios y obtenemos el ID de la primera sucursal
+    resultado_activacion = activar_suscripcion_y_terminal(
+        id_cuenta=cuenta_activada['id'], id_empresa_addsy=id_empresa_addsy,
+        id_terminal_uuid=id_terminal, id_stripe=id_stripe_session
     )
-    # --- CAMBIO 3: Capturar los dos valores de retorno y verificar ---
-    if not exito_servicios:
-        return HTMLResponse("<h3>✅ Cuenta verificada, pero falló la activación de servicios en la BD. Contacta a soporte.</h3>", status_code=500)
+    if not resultado_activacion.get('exito'):
+        return HTMLResponse("<h3>✅ Cuenta verificada, pero falló la activación de servicios en la BD.</h3>", status_code=500)
 
-    # --- CAMBIO 4: Reemplazar la antigua llamada a la nube por las dos nuevas funciones ---
-    # Paso 4.1: Crear la estructura base de la empresa
+    # Creamos las carpetas base en la nube
     if not crear_estructura_base_empresa(id_empresa_addsy):
-        return HTMLResponse("<h3>✅ Servicios activados, pero falló la creación de la carpeta principal en la nube. Contacta a soporte.</h3>", status_code=500)
+        return HTMLResponse("<h3>✅ Falló la creación de la carpeta principal en la nube.</h3>", status_code=500)
 
-    # Paso 4.2: Crear la estructura específica de la primera sucursal
-    if not crear_estructura_sucursal(ruta_cloud_creada):
-        return HTMLResponse("<h3>✅ Carpeta principal creada, pero falló la creación de la carpeta de sucursal. Contacta a soporte.</h3>", status_code=500)
+    if not crear_estructura_sucursal(resultado_activacion['ruta_cloud']):
+        return HTMLResponse("<h3>✅ Falló la creación de la carpeta de sucursal.</h3>", status_code=500)
 
+    # ✅ --- INICIA LA NUEVA LÓGICA DE CREACIÓN DE EMPLEADO ---
+    try:
+        # A. Definir la ruta del archivo que 'crear_estructura_base_empresa' ya copió
+        ruta_db_usuarios = f"{id_empresa_addsy}/databases_generales/usuarios.sqlite"
+        
+        # B. Descargar la plantilla recién copiada (y vacía)
+        db_bytes_original = descargar_archivo_db(ruta_db_usuarios)
+        if not db_bytes_original: raise Exception("No se encontró la DB de usuarios plantilla en la nube.")
+
+        # C. Preparar datos y generar credenciales
+        datos_propietario = {
+            **cuenta_activada, 
+            'id_primera_sucursal': resultado_activacion['id_sucursal']
+        }
+        username_empleado = "11001" 
+        contrasena_temporal = generar_contrasena_temporal()
+        
+        # D. Añadir el primer admin al archivo descargado
+        db_bytes_modificado = anadir_primer_administrador(
+            db_bytes_original, datos_propietario, username_empleado, contrasena_temporal
+        )
+        if not db_bytes_modificado: raise Exception("No se pudo insertar el admin en el archivo DB.")
+        
+        # E. Volver a subir el archivo ya con los datos del admin, sobrescribiendo el anterior
+        if not subir_archivo_db(ruta_db_usuarios, db_bytes_modificado):
+            raise Exception("No se pudo re-subir la DB de empleados a la nube.")
+        
+        # F. Enviar correo con credenciales
+        enviar_correo_credenciales(
+            destinatario=cuenta_activada['correo'], nombre_usuario=cuenta_activada['nombre_completo'],
+            username_empleado=username_empleado, contrasena_temporal=contrasena_temporal
+        )
+    except Exception as e:
+        return HTMLResponse(f"<h3>✅ Tu cuenta está activa, pero hubo un error al generar tus credenciales: {e}.</h3>", status_code=500)
+    
     actualizar_contadores_suscripcion(cuenta_activada['id'])
-    print(f"Contadores actualizados para la cuenta ID: {cuenta_activada['id']}")
-
-    return HTMLResponse("<h2>✅ ¡Todo listo! Tu cuenta, sucursal y espacio en la nube han sido configurados. Ya puedes volver al software e iniciar sesión.</h2>")
+    
+    return HTMLResponse("<h2>✅ ¡Todo listo! Tu cuenta ha sido configurada. Revisa tu correo para obtener tus credenciales de acceso.</h2>")
 
 def verificar_terminal_activa_controller(
     request_data: models.TerminalVerificationRequest, client_ip: str
