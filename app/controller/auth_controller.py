@@ -314,20 +314,124 @@ async def mostrar_pagina_reseteo(token: str):
     """Devuelve una página HTML simple para que el usuario ingrese la nueva contraseña."""
     # Este HTML es simple, en una app real podría ser una página de frontend.
     html_content = f"""
-    <html>
-        <head><title>Restablecer Contraseña</title></head>
-        <body>
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Restablecer Contraseña</title>
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                background-color: #f0f2f5;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+            }}
+            .container {{
+                background-color: #ffffff;
+                padding: 40px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                width: 100%;
+                max-width: 400px;
+                text-align: center;
+            }}
+            h3 {{
+                color: #1c1e21;
+                font-size: 24px;
+                margin-bottom: 20px;
+            }}
+            input[type="password"] {{
+                width: 100%;
+                padding: 12px;
+                margin-bottom: 15px;
+                border: 1px solid #dddfe2;
+                border-radius: 6px;
+                box-sizing: border-box; /* Importante para el padding */
+            }}
+            input[type="submit"] {{
+                width: 100%;
+                padding: 12px;
+                background-color: #2563EB;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 16px;
+                font-weight: 600;
+                cursor: pointer;
+            }}
+            input[type="submit"]:hover {{
+                background-color: #1D4ED8;
+            }}
+            .show-password {{
+                text-align: left;
+                margin-bottom: 20px;
+                font-size: 14px;
+                color: #606770;
+            }}
+            #error_message {{
+                color: #d93025;
+                font-size: 12px;
+                text-align: left;
+                height: 15px;
+                margin-bottom: 10px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
             <h3>Establece tu nueva contraseña</h3>
-            <form action="/auth/ejecutar-reseteo" method="post">
+            <form action="/auth/ejecutar-reseteo" method="post" onsubmit="return validateForm()">
                 <input type="hidden" name="token" value="{token}" />
-                <label for="nueva_contrasena">Nueva Contraseña:</label><br>
-                <input type="password" id="nueva_contrasena" name="nueva_contrasena" required minlength="6"><br><br>
-                <input type="submit" value="Restablecer">
+                
+                <input type="password" id="nueva_contrasena" name="nueva_contrasena" placeholder="Nueva Contraseña" required minlength="6">
+                <input type="password" id="confirmar_contrasena" name="confirmar_contrasena" placeholder="Confirmar Nueva Contraseña" required minlength="6">
+                
+                <div class="show-password">
+                    <input type="checkbox" onclick="togglePasswordVisibility()"> Mostrar contraseñas
+                </div>
+
+                <div id="error_message"></div>
+
+                <input type="submit" value="Restablecer Contraseña">
             </form>
-        </body>
+        </div>
+
+        <script>
+            function togglePasswordVisibility() {{
+                var pass1 = document.getElementById("nueva_contrasena");
+                var pass2 = document.getElementById("confirmar_contrasena");
+                if (pass1.type === "password") {{
+                    pass1.type = "text";
+                    pass2.type = "text";
+                }} else {{
+                    pass1.type = "password";
+                    pass2.type = "password";
+                }}
+            }}
+
+            function validateForm() {{
+                var pass1 = document.getElementById("nueva_contrasena").value;
+                var pass2 = document.getElementById("confirmar_contrasena").value;
+                var errorMessage = document.getElementById("error_message");
+
+                if (pass1 !== pass2) {{
+                    errorMessage.textContent = "Las contraseñas no coinciden.";
+                    return false; // Evita que el formulario se envíe
+                }} else {{
+                    errorMessage.textContent = "";
+                    return true; // Permite que el formulario se envíe
+                }}
+            }}
+        </script>
+    </body>
     </html>
     """
     return HTMLResponse(content=html_content)
+
 
 async def ejecutar_reseteo_contrasena(request: Request):
     """Procesa el formulario de la página de reseteo."""
