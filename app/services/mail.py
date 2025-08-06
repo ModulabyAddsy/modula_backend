@@ -102,3 +102,11 @@ def enviar_correo_credenciales(destinatario: str, nombre_usuario: str, username_
         print(f"✅ Correo de credenciales enviado exitosamente a {destinatario}.")
     except Exception as e:
         print(f"🔥🔥 ERROR al enviar correo de credenciales: {e}")
+        
+def enviar_correo_reseteo(destinatario: str, nombre_usuario: str, token: str):
+    """Envía un correo con el enlace para resetear la contraseña."""
+    # (Aquí va la lógica completa de envío, similar a las otras funciones de correo)
+    enlace = f"https://modula-backend.onrender.com/auth/pagina-reseteo?token={token}"
+    asunto = "Restablece tu contraseña de Addsy"
+    # ... construir el cuerpo del correo con el enlace y enviarlo
+    print(f"✉️  Simulando envío de correo de RESETEO a {destinatario}.")

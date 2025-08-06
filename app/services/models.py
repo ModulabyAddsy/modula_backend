@@ -130,3 +130,10 @@ class ActivationStatusResponse(BaseModel):
     access_token: Optional[str] = None
     # Puedes añadir más info del empleado si la necesitas en el frontend
     empleado_info: Optional[dict] = None
+    
+class SolicitudReseteo(BaseModel):
+    email: EmailStr
+
+class EjecutarReseteo(BaseModel):
+    token: str
+    nueva_contrasena: str = Field(..., min_length=6)

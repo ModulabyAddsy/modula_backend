@@ -490,3 +490,43 @@ def actualizar_suscripcion_tras_pago(stripe_sub_id: str, nuevo_periodo_fin_ts: i
         return False
     finally:
         if conn: conn.close()
+
+def guardar_token_reseteo(correo: str, token: str, token_expira: datetime):
+    """Guarda un token de reseteo para una cuenta."""
+    conn = get_connection()
+    if not conn: return False
+    query = "UPDATE cuentas_addsy SET token_recuperacion = %s, token_expira = %s WHERE correo = %s;"
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, (token, token_expira, correo))
+        conn.commit()
+        return True
+    finally:
+        if conn: conn.close()
+
+def resetear_contrasena_con_token(token: str, nueva_contrasena_hash: str):
+    """Busca una cuenta por token y, si es válido, resetea la contraseña."""
+    conn = get_connection()
+    if not conn: return "db_error"
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM cuentas_addsy WHERE token_recuperacion = %s;", (token,))
+            cuenta = cur.fetchone()
+            if not cuenta:
+                return "invalid_token"
+            if not cuenta["token_expira"] or cuenta["token_expira"] < datetime.now(cuenta["token_expira"].tzinfo):
+                return "expired_token"
+            
+            # El token es válido, actualizamos la contraseña y lo anulamos
+            cur.execute(
+                "UPDATE cuentas_addsy SET contrasena_hash = %s, token_recuperacion = NULL, token_expira = NULL WHERE id = %s;",
+                (nueva_contrasena_hash, cuenta["id"])
+            )
+            conn.commit()
+            return "success"
+    except Exception as e:
+        conn.rollback()
+        print(f"🔥🔥 ERROR reseteando contraseña: {e}")
+        return "db_error"
+    finally:
+        if conn: conn.close()

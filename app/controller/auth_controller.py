@@ -27,14 +27,15 @@ from app.services.db import (
     get_terminales_por_cuenta, # <-- ESTA ES LA FUNCIÓN QUE FALTABA IMPORTA
     buscar_sucursal_por_ip_en_otra_terminal, # <--- NUEVA
     get_sucursales_por_cuenta, get_sucursales_por_cuenta,
-    buscar_cuenta_por_claim_token
+    buscar_cuenta_por_claim_token,guardar_token_reseteo,
+    resetear_contrasena_con_token
 )
 from app.services import security
 from app.services import employee_service
 from app.services.employee_service import anadir_primer_administrador
 from app.services.cloud.setup_empresa_cloud import subir_archivo_db
-from app.services.utils import generar_contrasena_temporal
-from app.services.mail import enviar_correo_credenciales
+from app.services.utils import generar_contrasena_temporal, generar_token_verificacion
+from app.services.mail import enviar_correo_credenciales, enviar_correo_reseteo
 
 #COMENTARIO PARA SUBIR A GITHUB
 
@@ -297,3 +298,50 @@ async def check_activation_status(claim_token: str):
     except Exception as e:
         print(f"🔥🔥 ERROR durante el check_activation_status para claim {claim_token}: {e}")
         raise HTTPException(status_code=500, detail="Error al finalizar la activación.")
+
+async def solicitar_reseteo_contrasena(data: models.SolicitudReseteo):
+    """Genera un token de reseteo y envía el correo."""
+    cuenta = buscar_cuenta_addsy_por_correo(data.email)
+    # Importante: No revelamos si el correo existe o no por seguridad.
+    if cuenta:
+        token, token_expira = generar_token_verificacion()
+        guardar_token_reseteo(data.email, token, token_expira)
+        enviar_correo_reseteo(data.email, cuenta['nombre_completo'], token)
+    
+    return {"message": "Si tu correo está registrado, recibirás un enlace de recuperación."}
+
+async def mostrar_pagina_reseteo(token: str):
+    """Devuelve una página HTML simple para que el usuario ingrese la nueva contraseña."""
+    # Este HTML es simple, en una app real podría ser una página de frontend.
+    html_content = f"""
+    <html>
+        <head><title>Restablecer Contraseña</title></head>
+        <body>
+            <h3>Establece tu nueva contraseña</h3>
+            <form action="/auth/ejecutar-reseteo" method="post">
+                <input type="hidden" name="token" value="{token}" />
+                <label for="nueva_contrasena">Nueva Contraseña:</label><br>
+                <input type="password" id="nueva_contrasena" name="nueva_contrasena" required minlength="6"><br><br>
+                <input type="submit" value="Restablecer">
+            </form>
+        </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+async def ejecutar_reseteo_contrasena(request: Request):
+    """Procesa el formulario de la página de reseteo."""
+    form_data = await request.form()
+    token = form_data.get("token")
+    nueva_contrasena = form_data.get("nueva_contrasena")
+
+    if not all([token, nueva_contrasena]):
+         return HTMLResponse("Faltan datos.", status_code=400)
+
+    nueva_contrasena_hash = hash_contrasena(nueva_contrasena)
+    resultado = resetear_contrasena_con_token(token, nueva_contrasena_hash)
+
+    if resultado == "success":
+        return HTMLResponse("<h3>✅ Contraseña actualizada exitosamente. Ya puedes cerrar esta ventana.</h3>")
+    else:
+        return HTMLResponse(f"<h3>❌ Error: {resultado.replace('_', ' ')}.</h3>", status_code=400)
