@@ -4,6 +4,7 @@ from app.controller import terminal_controller
 from app.services.security import get_current_active_user
 from app.services.models import (Terminal, TerminalCreate, AsignarTerminalRequest, 
                                  CrearSucursalYAsignarRequest, Token)
+from app.services import models
 
 router = APIRouter()
 
@@ -40,3 +41,8 @@ def endpoint_crear_sucursal_y_asignar(
 ):
     """Crea una nueva sucursal y le asigna la terminal de origen."""
     return terminal_controller.crear_sucursal_y_asignar_terminal(request_data, current_user, request)
+
+@router.post("/buscar-por-hardware")
+def buscar_terminal_route(request_data: models.TerminalVerificationRequest):
+    """Busca una terminal por su ID de hardware para recuperarla."""
+    return terminal_controller.buscar_terminal_por_hardware(request_data)

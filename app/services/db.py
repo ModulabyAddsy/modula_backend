@@ -530,3 +530,8 @@ def resetear_contrasena_con_token(token: str, nueva_contrasena_hash: str):
         return "db_error"
     finally:
         if conn: conn.close()
+
+def buscar_terminal_por_hardware_id(hardware_id: str):
+    """Busca una terminal por su id_terminal (que ahora es el ID de hardware)."""
+    # Reutilizamos la función que ya teníamos, ¡es la misma lógica!
+    return buscar_terminal_activa_por_id(hardware_id)

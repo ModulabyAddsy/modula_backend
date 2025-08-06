@@ -2,10 +2,11 @@
 from fastapi import HTTPException, Request
 from app.services.db import (get_terminales_por_cuenta, crear_terminal, 
                              actualizar_sucursal_de_terminal, actualizar_contadores_suscripcion,
-                             actualizar_ip_terminal)
+                             actualizar_ip_terminal, buscar_terminal_por_hardware_id)
 from app.controller import sucursal_controller
 from app.services import security
 from app.services.models import TerminalCreate, AsignarTerminalRequest, CrearSucursalYAsignarRequest, Token
+from app.services import models
 # ✅ 1. Importar la nueva función de sincronización
 from app.services.subscription_sync_service import sincronizar_suscripcion_con_db
 
@@ -80,3 +81,10 @@ def crear_sucursal_y_asignar_terminal(request_data: CrearSucursalYAsignarRequest
     access_token = security.crear_access_token(data=access_token_data)
     
     return Token(access_token=access_token, token_type="bearer", id_terminal=request_data.id_terminal_origen)
+
+def buscar_terminal_por_hardware(request_data: models.TerminalVerificationRequest):
+    """Busca si una terminal con un ID de hardware ya está registrada."""
+    terminal = buscar_terminal_por_hardware_id(request_data.id_terminal)
+    if not terminal:
+        raise HTTPException(status_code=404, detail="Terminal con este ID de hardware no encontrada.")
+    return terminal
