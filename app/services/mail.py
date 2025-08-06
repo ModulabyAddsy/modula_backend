@@ -104,9 +104,47 @@ def enviar_correo_credenciales(destinatario: str, nombre_usuario: str, username_
         print(f"🔥🔥 ERROR al enviar correo de credenciales: {e}")
         
 def enviar_correo_reseteo(destinatario: str, nombre_usuario: str, token: str):
-    """Envía un correo con el enlace para resetear la contraseña."""
-    # (Aquí va la lógica completa de envío, similar a las otras funciones de correo)
+    """
+    Envía un correo con el enlace para restablecer la contraseña de la cuenta Addsy.
+    """
+    if not all([SMTP_SERVER, SMTP_PORT, EMAIL_USER, EMAIL_PASS]):
+        print("⚠️  Faltan variables de entorno para el envío de correo. Se omitirá el envío real.")
+        return
+
+    # --- Creación del Mensaje ---
     enlace = f"https://modula-backend.onrender.com/auth/pagina-reseteo?token={token}"
-    asunto = "Restablece tu contraseña de Addsy"
-    # ... construir el cuerpo del correo con el enlace y enviarlo
-    print(f"✉️  Simulando envío de correo de RESETEO a {destinatario}.")
+    mensaje = MIMEMultipart("alternative")
+    mensaje["Subject"] = "Restablece tu contraseña de Modula"
+    mensaje["From"] = f"Addsy Soporte <{EMAIL_USER}>"
+    mensaje["To"] = destinatario
+
+    # --- Contenido del Correo en formato HTML ---
+    html = f"""
+    <html>
+      <body style="font-family: Arial, sans-serif; color: #333;">
+        <h2>Hola {nombre_usuario},</h2>
+        <p>Recibimos una solicitud para restablecer la contraseña de tu cuenta Addsy para Modula.</p>
+        <p>Si no solicitaste esto, puedes ignorar este correo. De lo contrario, haz clic en el siguiente botón para elegir una nueva contraseña:</p>
+        <a href="{enlace}" style="background-color: #007acc; color: white; padding: 12px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">
+            Restablecer Contraseña
+        </a>
+        <p style="margin-top: 30px; font-size: 12px; color: gray;">
+            Este enlace expirará en 20 minutos.
+        </p>
+      </body>
+    </html>
+    """
+    
+    parte_html = MIMEText(html, "html")
+    mensaje.attach(parte_html)
+
+    # --- Envío del Correo ---
+    contexto_ssl = ssl.create_default_context()
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls(context=contexto_ssl)
+            server.login(EMAIL_USER, EMAIL_PASS)
+            server.sendmail(EMAIL_USER, destinatario, mensaje.as_string())
+        print(f"✅ Correo de reseteo de contraseña enviado exitosamente a {destinatario}.")
+    except Exception as e:
+        print(f"🔥🔥 ERROR al enviar correo de reseteo: {e}")
