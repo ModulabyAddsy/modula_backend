@@ -65,3 +65,7 @@ async def login(data: LoginData, request: Request): # <-- 1. Añadir request: Re
     """Endpoint para iniciar sesión y obtener un token JWT."""
     # 2. Pasar el client_ip al controlador
     return await auth_controller.login_para_access_token(data, client_ip=request.client.host)
+
+@router.get("/check-activation-status/{claim_token}", response_model=models.ActivationStatusResponse)
+async def check_activation_status_route(claim_token: str):
+    return await auth_controller.check_activation_status(claim_token)

@@ -15,6 +15,7 @@ class RegistroCuenta(BaseModel):
     nombre_empresa: str = Field(..., example="Tienda Don Pepe")
     rfc: Optional[str] = Field(None, example="XAXX010101000")
     id_terminal: str = Field(..., example="UUID_DE_LA_TERMINAL_GENERADO_EN_CLIENTE")
+    claim_token: str # <-- Añadir este campo
 
 class LoginData(BaseModel):
     correo: EmailStr
@@ -121,3 +122,11 @@ class CrearSucursalYAsignarRequest(BaseModel):
     """Modelo para crear sucursal y asignarle una terminal."""
     id_terminal_origen: str
     nombre_nueva_sucursal: str
+    
+# Añade este nuevo modelo al final del archivo
+class ActivationStatusResponse(BaseModel):
+    status: str # "pending" o "complete"
+    id_terminal: Optional[str] = None
+    access_token: Optional[str] = None
+    # Puedes añadir más info del empleado si la necesitas en el frontend
+    empleado_info: Optional[dict] = None

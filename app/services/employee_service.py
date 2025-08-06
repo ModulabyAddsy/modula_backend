@@ -55,3 +55,38 @@ def anadir_primer_administrador(db_bytes: bytes, datos_propietario: dict, userna
         # 4. Asegurarse de borrar el archivo temporal
         if os.path.exists(temp_db_path):
             os.remove(temp_db_path)
+
+def obtener_info_empleado(db_bytes: bytes, nombre_usuario: str) -> dict | None:
+    """
+    Toma el contenido de una DB SQLite (en bytes), busca un empleado por su
+    nombre de usuario y devuelve sus datos como un diccionario.
+    """
+    temp_db_path = f"temp_query_{nombre_usuario}.sqlite"
+    
+    try:
+        # 1. Escribe los bytes descargados a un archivo temporal para poder consultarlo
+        with open(temp_db_path, "wb") as f:
+            f.write(db_bytes)
+
+        # 2. Conecta al archivo temporal y busca al empleado
+        with sqlite3.connect(temp_db_path) as con:
+            con.row_factory = sqlite3.Row # Esto hace que los resultados se puedan tratar como diccionarios
+            cur = con.cursor()
+            
+            cur.execute("SELECT * FROM empleados WHERE nombre_usuario = ?", (nombre_usuario,))
+            empleado_row = cur.fetchone()
+            
+            # 3. Si se encontró, lo convierte a un diccionario estándar y lo devuelve
+            if empleado_row:
+                return dict(empleado_row)
+        
+        # Si no se encontró, devuelve None
+        return None
+
+    except Exception as e:
+        print(f"🔥🔥 ERROR obteniendo info del empleado '{nombre_usuario}': {e}")
+        return None
+    finally:
+        # 4. Asegurarse de borrar el archivo temporal
+        if os.path.exists(temp_db_path):
+            os.remove(temp_db_path)

@@ -38,13 +38,15 @@ def crear_cuenta_addsy(data: dict):
             sql = """
                 INSERT INTO cuentas_addsy (
                     id_empresa_addsy, nombre_empresa, rfc, nombre_completo, 
-                    telefono, correo, contrasena_hash, estatus_cuenta, fecha_nacimiento
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+                    telefono, correo, contrasena_hash, estatus_cuenta, fecha_nacimiento,
+                    claim_token
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
             """
             params = (
                 id_empresa_addsy, data['nombre_empresa'], data.get('rfc'), data['nombre_completo'],
                 data['telefono'], data['correo'], data['contrasena_hash'],
-                'pendiente_pago', data['fecha_nacimiento']
+                'pendiente_pago', data['fecha_nacimiento'],
+                data.get('claim_token') # <-- Añadir el nuevo valor
             )
             cur.execute(sql, params)
             cuenta_id = cur.fetchone()['id']
@@ -55,6 +57,18 @@ def crear_cuenta_addsy(data: dict):
         conn.rollback()
         print(f"🔥🔥 ERROR en transacción de creación de cuenta: {e}")
         return None
+    finally:
+        if conn: conn.close()
+        
+def buscar_cuenta_por_claim_token(claim_token: str):
+    conn = get_connection()
+    if not conn: return None
+    query = "SELECT * FROM cuentas_addsy WHERE claim_token = %s;"
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, (claim_token,))
+            cuenta = cur.fetchone()
+        return cuenta
     finally:
         if conn: conn.close()
 

@@ -26,10 +26,11 @@ from app.services.db import (
     actualizar_contadores_suscripcion,
     get_terminales_por_cuenta, # <-- ESTA ES LA FUNCIÓN QUE FALTABA IMPORTA
     buscar_sucursal_por_ip_en_otra_terminal, # <--- NUEVA
-    get_sucursales_por_cuenta
+    get_sucursales_por_cuenta, get_sucursales_por_cuenta,
+    buscar_cuenta_por_claim_token
 )
 from app.services import security
-
+from app.services import employee_service
 from app.services.employee_service import anadir_primer_administrador
 from app.services.cloud.setup_empresa_cloud import subir_archivo_db
 from app.services.utils import generar_contrasena_temporal
@@ -47,10 +48,10 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
     if cuenta_existente and cuenta_existente["estatus_cuenta"] == "verificada":
         raise HTTPException(status_code=400, detail="Este correo ya está en uso.")
 
-    nuevo_usuario_data = data.dict()
+    nuevo_usuario_data = data.dict() # Ahora esto ya incluye el claim_token
     nuevo_usuario_data['contrasena_hash'] = hash_contrasena(data.contrasena)
     
-    cuenta_id = crear_cuenta_addsy(nuevo_usuario_data)
+    cuenta_id = crear_cuenta_addsy(nuevo_usuario_data) # La función de DB ya está lista para recibirlo
     if not cuenta_id:
         raise HTTPException(status_code=500, detail="Error crítico al crear la cuenta en la base de datos.")
 
@@ -249,3 +250,50 @@ def verificar_terminal_activa_controller(
             sugerencia_migracion=sugerencia,
             sucursales_existentes=lista_sucursales
         )
+
+async def check_activation_status(claim_token: str):
+    """
+    Endpoint de polling para que el cliente verifique si la cuenta ya fue activada.
+    """
+    cuenta = buscar_cuenta_por_claim_token(claim_token)
+    if not cuenta:
+        raise HTTPException(status_code=404, detail="Claim token no válido.")
+
+    if cuenta['estatus_cuenta'] != 'verificada':
+        return {"status": "pending"}
+
+    # ¡La cuenta está verificada! Procedemos a generar el token de auto-login
+    try:
+        # 1. Encontrar la primera terminal de esta cuenta
+        terminales = get_terminales_por_cuenta(cuenta['id'])
+        if not terminales:
+            raise Exception("No se encontró la terminal principal de la cuenta.")
+        id_terminal = terminales[0]['id_terminal']
+
+        # 2. Descargar la DB de empleados
+        ruta_db_usuarios = f"{cuenta['id_empresa_addsy']}/databases_generales/usuarios.sqlite"
+        db_bytes = descargar_archivo_db(ruta_db_usuarios)
+        if not db_bytes:
+            raise Exception("No se pudo descargar la DB de empleados.")
+        
+        # 3. Obtener info del primer empleado para crear el token
+        empleado_info = employee_service.obtener_info_empleado(db_bytes, "11001")
+        if not empleado_info:
+            raise Exception("No se encontró al empleado administrador inicial.")
+
+        # 4. Crear un token de acceso para ese empleado
+        token_data = {
+            "sub": empleado_info['nombre_usuario'], "id_empleado": empleado_info['id_empleado'],
+            "puesto": empleado_info['puesto'], "id_cuenta_addsy": cuenta['id']
+        }
+        access_token = crear_access_token(data=token_data)
+
+        return {
+            "status": "complete",
+            "id_terminal": id_terminal,
+            "access_token": access_token,
+            "empleado_info": empleado_info
+        }
+    except Exception as e:
+        print(f"🔥🔥 ERROR durante el check_activation_status para claim {claim_token}: {e}")
+        raise HTTPException(status_code=500, detail="Error al finalizar la activación.")
