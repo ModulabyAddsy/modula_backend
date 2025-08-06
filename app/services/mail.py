@@ -4,11 +4,17 @@ import os
 from dotenv import load_dotenv
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+import ssl
 
 load_dotenv()
 
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
+
+# --- Configuración leída desde .env ---
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+
 
 def enviar_correo_verificacion(destinatario, nombre_usuario, token, id_terminal, id_stripe_session):
     """
@@ -50,11 +56,49 @@ def enviar_correo_verificacion(destinatario, nombre_usuario, token, id_terminal,
         print(f"❌ Error al enviar correo: {e}")
         
 def enviar_correo_credenciales(destinatario: str, nombre_usuario: str, username_empleado: str, contrasena_temporal: str):
-    # Lógica para construir y enviar un correo con el siguiente texto:
-    # "Hola {nombre_usuario}, ¡Bienvenido a Modula!
-    # Ya puedes iniciar sesión en la aplicación con tus credenciales de administrador:
-    # Usuario: {username_empleado}
-    # Contraseña Temporal: {contrasena_temporal}
-    # Por seguridad, se te pedirá cambiar tu contraseña en el primer inicio de sesión."
-    print(f"✉️  Correo de credenciales enviado a {destinatario} (Simulación).")
-    # Aquí iría la integración real con tu servicio de envío de correos.
+    """
+    Envía las credenciales de acceso iniciales al propietario de la cuenta.
+    """
+    if not all([SMTP_SERVER, SMTP_PORT, EMAIL_USER, EMAIL_PASS]):
+        print("⚠️  Faltan variables de entorno para el envío de correo. Se omitirá el envío real.")
+        return
+
+    # --- Creación del Mensaje ---
+    mensaje = MIMEMultipart("alternative")
+    mensaje["Subject"] = "¡Bienvenido a Modula! Tus Credenciales de Acceso"
+    mensaje["From"] = f"Addsy <{EMAIL_USER}>"
+    mensaje["To"] = destinatario
+
+    # --- Contenido del Correo en formato HTML ---
+    html = f"""
+    <html>
+      <body style="font-family: Arial, sans-serif; color: #333;">
+        <h2>¡Hola {nombre_usuario}, bienvenido a Modula POS!</h2>
+        <p>Tu cuenta ha sido creada y activada exitosamente. Ya puedes iniciar sesión en la aplicación con tus credenciales de administrador.</p>
+        <p>Por favor, guárdalas en un lugar seguro:</p>
+        <div style="background-color: #f2f2f2; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <p style="margin: 5px 0;"><strong>Usuario:</strong> <code style="font-size: 1.1em;">{username_empleado}</code></p>
+          <p style="margin: 5px 0;"><strong>Contraseña Temporal:</strong> <code style="font-size: 1.1em;">{contrasena_temporal}</code></p>
+        </div>
+        <p>Por tu seguridad, el sistema te pedirá que cambies esta contraseña la primera vez que inicies sesión.</p>
+        <br>
+        <p>Gracias por unirte a Addsy.</p>
+      </body>
+    </html>
+    """
+
+    # Adjuntar el contenido HTML al mensaje
+    parte_html = MIMEText(html, "html")
+    mensaje.attach(parte_html)
+
+    # --- Envío del Correo ---
+    contexto_ssl = ssl.create_default_context()
+    try:
+        # Usamos smtplib.SMTP para TLS, que es más común que SMTPS_SSL directo
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls(context=contexto_ssl)
+            server.login(EMAIL_USER, EMAIL_PASS)
+            server.sendmail(EMAIL_USER, destinatario, mensaje.as_string())
+        print(f"✅ Correo de credenciales enviado exitosamente a {destinatario}.")
+    except Exception as e:
+        print(f"🔥🔥 ERROR al enviar correo de credenciales: {e}")
