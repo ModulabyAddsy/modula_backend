@@ -190,6 +190,12 @@ def verificar_terminal_activa_controller(
     if not suscripcion or suscripcion['estado_suscripcion'] not in ['activa', 'prueba_gratis']:
         estado = suscripcion['estado_suscripcion'] if suscripcion else 'desconocido'
         raise HTTPException(status_code=403, detail=f"Suscripción no válida. Estado: {estado}")
+    
+    #CORRECCIÓN: Guardar la IP si es la primera vez que se verifica
+    ip_registrada = terminal_info.get('direccion_ip')
+    if not ip_registrada:
+        print(f"✅ Primera conexión desde la terminal {request_data.id_terminal}. Registrando IP.")
+        actualizar_ip_terminal(request_data.id_terminal, client_ip)
 
     # --- LÓGICA DE VERIFICACIÓN DE UBICACIÓN INTELIGENTE ---
     ubicaciones_autorizadas = get_ubicaciones_autorizadas(id_sucursal)
