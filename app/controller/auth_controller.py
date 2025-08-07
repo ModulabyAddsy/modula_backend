@@ -184,76 +184,88 @@ def verificar_terminal_activa_controller(
         raise HTTPException(status_code=404, detail="Terminal no registrada o inactiva.")
 
     id_cuenta = terminal_info['id_cuenta_addsy']
-    id_sucursal = terminal_info['id_sucursal']
+    id_sucursal_asignada = terminal_info['id_sucursal']
 
     suscripcion = actualizar_y_verificar_suscripcion(id_cuenta)
     if not suscripcion or suscripcion['estado_suscripcion'] not in ['activa', 'prueba_gratis']:
         estado = suscripcion['estado_suscripcion'] if suscripcion else 'desconocido'
         raise HTTPException(status_code=403, detail=f"Suscripción no válida. Estado: {estado}")
-    
-    #CORRECCIÓN: Guardar la IP si es la primera vez que se verifica
-    ip_registrada = terminal_info.get('direccion_ip')
-    if not ip_registrada:
-        print(f"✅ Primera conexión desde la terminal {request_data.id_terminal}. Registrando IP.")
-        actualizar_ip_terminal(request_data.id_terminal, client_ip)
 
     # --- LÓGICA DE VERIFICACIÓN DE UBICACIÓN INTELIGENTE ---
-    ubicaciones_autorizadas = get_ubicaciones_autorizadas(id_sucursal)
     
-    # Si es la primera vez que se usa la terminal en cualquier lugar, autorizamos esta ubicación.
+    # Primero, actualizamos la IP actual en la tabla de terminales.
+    # Esto mantiene un registro de la última IP conocida, sea válida o no.
+    actualizar_ip_terminal(request_data.id_terminal, client_ip)
+    
+    # Obtenemos la "huella digital" de la ubicación actual
+    geo_actual = get_ip_geolocation(client_ip)
+    
+    # Obtenemos las ubicaciones que ya hemos autorizado para la sucursal a la que esta terminal PERTENECE
+    ubicaciones_autorizadas = get_ubicaciones_autorizadas(id_sucursal_asignada)
+    
+    coincidencia_encontrada = False
+
     if not ubicaciones_autorizadas:
-        print(f"📍 Primera ubicación para sucursal {id_sucursal}. Autorizando automáticamente.")
-        geo_data = get_ip_geolocation(client_ip)
-        autorizar_nueva_ubicacion(id_sucursal, client_ip, geo_data)
-        # Si la autorización es exitosa, procedemos al acceso normal.
+        # Si no hay ninguna ubicación autorizada para esta sucursal, es la primera vez que se usa.
+        # La autorizamos automáticamente y permitimos el acceso.
+        print(f"📍 Primera ubicación para sucursal {id_sucursal_asignada}. Autorizando automáticamente.")
+        autorizar_nueva_ubicacion(id_sucursal_asignada, client_ip, geo_actual)
+        coincidencia_encontrada = True
     else:
-        # Si ya hay ubicaciones, verificamos si la actual coincide con alguna.
-        geo_actual = get_ip_geolocation(client_ip)
-        coincidencia_encontrada = False
+        # Si ya hay ubicaciones autorizadas, comparamos la actual con la lista.
         for ubicacion in ubicaciones_autorizadas:
-            # Comparamos el proveedor de internet (ISP) y la ciudad.
-            # Esta es una comparación mucho más estable que la IP exacta.
-            if ubicacion['isp'] and ubicacion['isp'] == geo_actual.get('isp') and \
-               ubicacion['ciudad'] and ubicacion['ciudad'] == geo_actual.get('ciudad'):
+            # La comparación es por ISP y Ciudad, que es más estable que la IP exacta.
+            if ubicacion.get('isp') == geo_actual.get('isp') and ubicacion.get('ciudad') == geo_actual.get('ciudad'):
                 coincidencia_encontrada = True
                 break
+    
+    # --- FLUJO DE DECISIÓN ---
+    
+    if coincidencia_encontrada:
+        # Si la ubicación es correcta, damos acceso.
+        print(f"✅ Ubicación verificada para terminal {request_data.id_terminal}.")
+        actualizar_contadores_suscripcion(id_cuenta)
         
-        if not coincidencia_encontrada:
-            # Si no coincide con ninguna ubicación autorizada, AHORA SÍ es un conflicto.
-            print(f"⚠️ Conflicto de ubicación para terminal {request_data.id_terminal}. La ubicación actual no está autorizada.")
+        access_token_data = {
+            "sub": terminal_info["correo"], "id": id_cuenta,
+            "id_empresa_addsy": terminal_info["id_empresa_addsy"]
+        }
+        access_token = security.crear_access_token(data=access_token_data)
+        
+        return models.TerminalVerificationResponse(
+            access_token=access_token,
+            id_empresa=terminal_info["id_empresa_addsy"],
+            nombre_empresa=terminal_info["nombre_empresa"],
+            id_sucursal=terminal_info["id_sucursal"],
+            nombre_sucursal=terminal_info["nombre_sucursal"],
+            estado_suscripcion=suscripcion['estado_suscripcion']
+        )
+    else:
+        # Si NO coincide, es un conflicto. Ahora investigamos si se movió a OTRA sucursal.
+        print(f"⚠️ Conflicto de ubicación para terminal {request_data.id_terminal}. No está en su sucursal asignada.")
+        
+        todas_las_sucursales_dict = get_sucursales_por_cuenta(id_cuenta)
+        sugerencia_migracion = None
+        
+        for otra_sucursal in todas_las_sucursales_dict:
+            if otra_sucursal['id'] == id_sucursal_asignada:
+                continue  # No comparamos con la sucursal a la que ya debería pertenecer
             
-            sugerencia_dict = buscar_sucursal_por_ip_en_otra_terminal(
-                id_terminal_actual=request_data.id_terminal, ip=client_ip, id_cuenta=id_cuenta
-            )
-            sugerencia = models.SucursalInfo(**sugerencia_dict) if sugerencia_dict else None
+            ubicaciones_otra_sucursal = get_ubicaciones_autorizadas(otra_sucursal['id'])
+            for ubicacion_otra in ubicaciones_otra_sucursal:
+                if ubicacion_otra.get('isp') == geo_actual.get('isp') and ubicacion_otra.get('ciudad') == geo_actual.get('ciudad'):
+                    # ¡Bingo! La ubicación actual coincide con una ubicación autorizada de OTRA sucursal.
+                    sugerencia_migracion = models.SucursalInfo(**otra_sucursal)
+                    break
+            if sugerencia_migracion:
+                break
 
-            lista_sucursales_dict = get_sucursales_por_cuenta(id_cuenta)
-            lista_sucursales = [models.SucursalInfo(**s) for s in lista_sucursales_dict]
-
-            return models.TerminalVerificationResponse(
-                status="location_mismatch",
-                sugerencia_migracion=sugerencia,
-                sucursales_existentes=lista_sucursales
-            )
-
-    # Si la verificación fue exitosa, actualizamos la IP y damos acceso
-    actualizar_ip_terminal(request_data.id_terminal, client_ip)
-    actualizar_contadores_suscripcion(id_cuenta)
-    
-    access_token_data = {
-        "sub": terminal_info["correo"], "id": id_cuenta,
-        "id_empresa_addsy": terminal_info["id_empresa_addsy"]
-    }
-    access_token = security.crear_access_token(data=access_token_data)
-    
-    return models.TerminalVerificationResponse(
-        access_token=access_token,
-        id_empresa=terminal_info["id_empresa_addsy"],
-        nombre_empresa=terminal_info["nombre_empresa"],
-        id_sucursal=terminal_info["id_sucursal"],
-        nombre_sucursal=terminal_info["nombre_sucursal"],
-        estado_suscripcion=suscripcion['estado_suscripcion']
-    )
+        # Devolvemos la respuesta de conflicto, que puede incluir o no la sugerencia de migración.
+        return models.TerminalVerificationResponse(
+            status="location_mismatch",
+            sugerencia_migracion=sugerencia_migracion,
+            sucursales_existentes=[models.SucursalInfo(**s) for s in todas_las_sucursales_dict]
+        )
 
 async def check_activation_status(claim_token: str):
     """
