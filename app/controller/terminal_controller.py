@@ -2,13 +2,14 @@
 from fastapi import HTTPException, Request
 from app.services.db import (get_terminales_por_cuenta, crear_terminal, 
                              actualizar_sucursal_de_terminal, actualizar_contadores_suscripcion,
-                             actualizar_ip_terminal, buscar_terminal_por_hardware_id)
+                             actualizar_ip_terminal, buscar_terminal_por_hardware_id, autorizar_nueva_ubicacion)
 from app.controller import sucursal_controller
 from app.services import security
 from app.services.models import TerminalCreate, AsignarTerminalRequest, CrearSucursalYAsignarRequest, Token
 from app.services import models
 # ✅ 1. Importar la nueva función de sincronización
 from app.services.subscription_sync_service import sincronizar_suscripcion_con_db
+from app.services.utils import get_ip_geolocation
 
 def get_mis_terminales(current_user: dict):
     """Obtiene las terminales del usuario actualmente autenticado."""
@@ -47,6 +48,11 @@ def migrar_terminal_a_sucursal(request_data: AsignarTerminalRequest, current_use
     
     # No se necesita sincronizar aquí porque el número de terminales/sucursales no cambió.
     
+    # ✅ AÑADIDO: Autorizar esta nueva ubicación para la sucursal de destino
+    geo_data = get_ip_geolocation(client_ip)
+    autorizar_nueva_ubicacion(request_data.id_sucursal_destino, client_ip, geo_data)
+    
+    actualizar_contadores_suscripcion(current_user['id'])
     return {"status": "ok", "message": "Terminal migrada exitosamente."}
 
 def crear_sucursal_y_asignar_terminal(request_data: CrearSucursalYAsignarRequest, current_user: dict, request: Request):
@@ -70,6 +76,13 @@ def crear_sucursal_y_asignar_terminal(request_data: CrearSucursalYAsignarRequest
 
     # ✅ 3. Actualizar contadores y sincronizar con Stripe
     actualizar_contadores_suscripcion(id_cuenta)
+    sincronizar_suscripcion_con_db(id_cuenta)
+    
+    # ✅ AÑADIDO: Autorizar esta nueva ubicación para la sucursal recién creada
+    id_sucursal_nueva = nueva_sucursal['id']
+    geo_data = get_ip_geolocation(client_ip)
+    autorizar_nueva_ubicacion(id_sucursal_nueva, client_ip, geo_data)
+    
     sincronizar_suscripcion_con_db(id_cuenta)
     
     # 4. Crear un nuevo token

@@ -28,13 +28,14 @@ from app.services.db import (
     buscar_sucursal_por_ip_en_otra_terminal, # <--- NUEVA
     get_sucursales_por_cuenta, get_sucursales_por_cuenta,
     buscar_cuenta_por_claim_token,guardar_token_reseteo,
-    resetear_contrasena_con_token
+    resetear_contrasena_con_token, get_ubicaciones_autorizadas, 
+    autorizar_nueva_ubicacion
 )
 from app.services import security
 from app.services import employee_service
 from app.services.employee_service import anadir_primer_administrador
 from app.services.cloud.setup_empresa_cloud import subir_archivo_db
-from app.services.utils import generar_contrasena_temporal, generar_token_verificacion
+from app.services.utils import generar_contrasena_temporal, generar_token_verificacion, get_ip_geolocation
 from app.services.mail import enviar_correo_credenciales, enviar_correo_reseteo
 
 #COMENTARIO PARA SUBIR A GITHUB
@@ -183,74 +184,70 @@ def verificar_terminal_activa_controller(
         raise HTTPException(status_code=404, detail="Terminal no registrada o inactiva.")
 
     id_cuenta = terminal_info['id_cuenta_addsy']
+    id_sucursal = terminal_info['id_sucursal']
 
     suscripcion = actualizar_y_verificar_suscripcion(id_cuenta)
     if not suscripcion or suscripcion['estado_suscripcion'] not in ['activa', 'prueba_gratis']:
         estado = suscripcion['estado_suscripcion'] if suscripcion else 'desconocido'
         raise HTTPException(status_code=403, detail=f"Suscripción no válida. Estado: {estado}")
 
-    # --- LÓGICA DE VERIFICACIÓN CORREGIDA Y FINAL ---
-    ip_registrada = terminal_info.get('direccion_ip')
+    # --- LÓGICA DE VERIFICACIÓN DE UBICACIÓN INTELIGENTE ---
+    ubicaciones_autorizadas = get_ubicaciones_autorizadas(id_sucursal)
     
-    # Escenario 1: La IP registrada es nula (primer arranque de la terminal).
-    # Se considera un caso válido, se actualiza la IP y se da acceso.
-    if not ip_registrada:
-        print(f"✅ Primera vez que se registra IP para la terminal {request_data.id_terminal}.")
-        actualizar_ip_terminal(request_data.id_terminal, client_ip)
-        actualizar_contadores_suscripcion(id_cuenta)
-        
-        access_token_data = {
-            "sub": terminal_info["correo"], "id": id_cuenta, 
-            "id_empresa_addsy": terminal_info["id_empresa_addsy"]
-        }
-        access_token = security.crear_access_token(data=access_token_data)
-        
-        return models.TerminalVerificationResponse(
-            access_token=access_token,
-            id_empresa=terminal_info["id_empresa_addsy"],
-            nombre_empresa=terminal_info["nombre_empresa"],
-            id_sucursal=terminal_info["id_sucursal"],
-            nombre_sucursal=terminal_info["nombre_sucursal"],
-            estado_suscripcion=suscripcion['estado_suscripcion']
-        )
-
-    # Escenario 2: La IP registrada coincide con la IP actual. Acceso normal.
-    elif str(ip_registrada).strip() == client_ip.strip():
-        # No es necesario actualizar la IP si es la misma, pero sí el contador y la última sincronización.
-        actualizar_contadores_suscripcion(id_cuenta)
-        
-        access_token_data = {
-            "sub": terminal_info["correo"], "id": id_cuenta,
-            "id_empresa_addsy": terminal_info["id_empresa_addsy"]
-        }
-        access_token = security.crear_access_token(data=access_token_data)
-        
-        return models.TerminalVerificationResponse(
-            access_token=access_token,
-            id_empresa=terminal_info["id_empresa_addsy"],
-            nombre_empresa=terminal_info["nombre_empresa"],
-            id_sucursal=terminal_info["id_sucursal"],
-            nombre_sucursal=terminal_info["nombre_sucursal"],
-            estado_suscripcion=suscripcion['estado_suscripcion']
-        )
-    
-    # Escenario 3: La IP existe PERO es diferente. ESTE ES EL CONFLICTO.
+    # Si es la primera vez que se usa la terminal en cualquier lugar, autorizamos esta ubicación.
+    if not ubicaciones_autorizadas:
+        print(f"📍 Primera ubicación para sucursal {id_sucursal}. Autorizando automáticamente.")
+        geo_data = get_ip_geolocation(client_ip)
+        autorizar_nueva_ubicacion(id_sucursal, client_ip, geo_data)
+        # Si la autorización es exitosa, procedemos al acceso normal.
     else:
-        print(f"⚠️ Conflicto de ubicación para terminal {request_data.id_terminal}. IP registrada: {ip_registrada}, IP actual: {client_ip}")
+        # Si ya hay ubicaciones, verificamos si la actual coincide con alguna.
+        geo_actual = get_ip_geolocation(client_ip)
+        coincidencia_encontrada = False
+        for ubicacion in ubicaciones_autorizadas:
+            # Comparamos el proveedor de internet (ISP) y la ciudad.
+            # Esta es una comparación mucho más estable que la IP exacta.
+            if ubicacion['isp'] and ubicacion['isp'] == geo_actual.get('isp') and \
+               ubicacion['ciudad'] and ubicacion['ciudad'] == geo_actual.get('ciudad'):
+                coincidencia_encontrada = True
+                break
         
-        sugerencia_dict = buscar_sucursal_por_ip_en_otra_terminal(
-            id_terminal_actual=request_data.id_terminal, ip=client_ip, id_cuenta=id_cuenta
-        )
-        sugerencia = models.SucursalInfo(**sugerencia_dict) if sugerencia_dict else None
+        if not coincidencia_encontrada:
+            # Si no coincide con ninguna ubicación autorizada, AHORA SÍ es un conflicto.
+            print(f"⚠️ Conflicto de ubicación para terminal {request_data.id_terminal}. La ubicación actual no está autorizada.")
+            
+            sugerencia_dict = buscar_sucursal_por_ip_en_otra_terminal(
+                id_terminal_actual=request_data.id_terminal, ip=client_ip, id_cuenta=id_cuenta
+            )
+            sugerencia = models.SucursalInfo(**sugerencia_dict) if sugerencia_dict else None
 
-        lista_sucursales_dict = get_sucursales_por_cuenta(id_cuenta)
-        lista_sucursales = [models.SucursalInfo(**s) for s in lista_sucursales_dict]
+            lista_sucursales_dict = get_sucursales_por_cuenta(id_cuenta)
+            lista_sucursales = [models.SucursalInfo(**s) for s in lista_sucursales_dict]
 
-        return models.TerminalVerificationResponse(
-            status="location_mismatch",
-            sugerencia_migracion=sugerencia,
-            sucursales_existentes=lista_sucursales
-        )
+            return models.TerminalVerificationResponse(
+                status="location_mismatch",
+                sugerencia_migracion=sugerencia,
+                sucursales_existentes=lista_sucursales
+            )
+
+    # Si la verificación fue exitosa, actualizamos la IP y damos acceso
+    actualizar_ip_terminal(request_data.id_terminal, client_ip)
+    actualizar_contadores_suscripcion(id_cuenta)
+    
+    access_token_data = {
+        "sub": terminal_info["correo"], "id": id_cuenta,
+        "id_empresa_addsy": terminal_info["id_empresa_addsy"]
+    }
+    access_token = security.crear_access_token(data=access_token_data)
+    
+    return models.TerminalVerificationResponse(
+        access_token=access_token,
+        id_empresa=terminal_info["id_empresa_addsy"],
+        nombre_empresa=terminal_info["nombre_empresa"],
+        id_sucursal=terminal_info["id_sucursal"],
+        nombre_sucursal=terminal_info["nombre_sucursal"],
+        estado_suscripcion=suscripcion['estado_suscripcion']
+    )
 
 async def check_activation_status(claim_token: str):
     """

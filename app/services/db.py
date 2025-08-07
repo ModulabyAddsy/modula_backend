@@ -535,3 +535,45 @@ def buscar_terminal_por_hardware_id(hardware_id: str):
     """Busca una terminal por su id_terminal (que ahora es el ID de hardware)."""
     # Reutilizamos la función que ya teníamos, ¡es la misma lógica!
     return buscar_terminal_activa_por_id(hardware_id)
+
+def get_ubicaciones_autorizadas(id_sucursal: int):
+    """Obtiene todas las ubicaciones autorizadas para una sucursal específica."""
+    conn = get_connection()
+    if not conn: return []
+    query = "SELECT * FROM sucursal_ubicaciones WHERE id_sucursal = %s;"
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, (id_sucursal,))
+            return cur.fetchall()
+    finally:
+        if conn: conn.close()
+
+def autorizar_nueva_ubicacion(id_sucursal: int, ip: str, geo_data: dict):
+    """Guarda una nueva huella de ubicación como autorizada para una sucursal."""
+    conn = get_connection()
+    if not conn: return False
+    query = """
+        INSERT INTO sucursal_ubicaciones 
+            (id_sucursal, ip_subnet, ciudad, region, pais, isp)
+        VALUES (%s, %s, %s, %s, %s, %s);
+    """
+    params = (
+        id_sucursal,
+        ip, # PostgreSQL convierte automáticamente el string a tipo inet
+        geo_data.get('ciudad'),
+        geo_data.get('region'),
+        geo_data.get('pais'),
+        geo_data.get('isp')
+    )
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+        conn.commit()
+        print(f"✅ Nueva ubicación autorizada para sucursal {id_sucursal} con IP {ip}.")
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"🔥🔥 ERROR autorizando nueva ubicación: {e}")
+        return False
+    finally:
+        if conn: conn.close()
