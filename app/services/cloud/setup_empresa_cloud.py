@@ -141,3 +141,21 @@ def listar_archivos_con_metadata(prefix: str) -> list:
         print(f"❌ Error listando archivos en R2 para el prefijo '{prefix}': {e}")
     
     return lista_archivos
+
+def descargar_archivo_de_r2(ruta_cloud_origen: str) -> bytes | None:
+    """Descarga el contenido de un archivo de R2 como bytes."""
+    try:
+        response = s3.get_object(Bucket=BUCKET_NAME, Key=ruta_cloud_origen)
+        return response['Body'].read()
+    except Exception as e:
+        print(f"❌ Error al descargar {ruta_cloud_origen} de R2: {e}")
+        return None
+
+def subir_archivo_a_r2(ruta_cloud_destino: str, contenido_archivo: bytes) -> bool:
+    """Sube un contenido en bytes a una ruta específica en R2."""
+    try:
+        s3.put_object(Bucket=BUCKET_NAME, Key=ruta_cloud_destino, Body=contenido_archivo)
+        return True
+    except Exception as e:
+        print(f"❌ Error al subir a R2 en '{ruta_cloud_destino}': {e}")
+        return False

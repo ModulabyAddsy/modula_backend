@@ -1,8 +1,9 @@
 # app/routes/sync.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, UploadFile, File
 from app.controller import sync_controller
 from app.services.models import SyncCheckRequest, SyncCheckResponse
 from app.services.security import get_current_active_user
+from fastapi.responses import StreamingResponse
 
 router = APIRouter(
     prefix="/sync",
@@ -19,3 +20,17 @@ def endpoint_check_sync(
     plan de acción para sincronizar el esquema y los datos.
     """
     return sync_controller.verificar_y_planificar_sincronizacion(sync_request, current_user)
+
+@router.get("/download/{key_path:path}", response_class=StreamingResponse)
+def endpoint_download_file(key_path: str, current_user: dict = Depends(get_current_active_user)):
+    """
+    Descarga un archivo específico de la nube del usuario.
+    """
+    return sync_controller.descargar_archivo_sincronizacion(key_path, current_user)
+
+@router.post("/upload/{key_path:path}")
+async def endpoint_upload_file(key_path: str, file: UploadFile = File(...), current_user: dict = Depends(get_current_active_user)):
+    """
+    Sube un archivo del cliente a su nube.
+    """
+    return await sync_controller.subir_archivo_sincronizacion(key_path, file, current_user)

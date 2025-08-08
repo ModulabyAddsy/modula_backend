@@ -2,6 +2,10 @@
 from app.services.models import SyncCheckRequest, SyncCheckResponse, SyncSchemaAction, SyncDataAction
 from app.services.cloud.setup_empresa_cloud import listar_archivos_con_metadata
 from app.services.db import buscar_terminal_activa_por_id
+from app.services.cloud.setup_empresa_cloud import descargar_archivo_de_r2, subir_archivo_a_r2
+from fastapi.responses import StreamingResponse
+from fastapi import HTTPException, UploadFile
+import io
 
 MODELO_DATABASES_GENERALES = "_modelo/databases_generales/"
 MODELO_DATABASES_SUCURSAL = "_modelo/plantilla_sucursal/"
@@ -62,3 +66,18 @@ def verificar_y_planificar_sincronizacion(sync_request: SyncCheckRequest, curren
             data_actions.append(SyncDataAction(accion="descargar_actualizacion", key=key_cloud_completa))
             
     return SyncCheckResponse(schema_actions=schema_actions, data_actions=data_actions)
+
+def descargar_archivo_sincronizacion(key_path: str, current_user: dict):
+    # (En una versión futura, validaríamos que el 'key_path' pertenece al 'current_user')
+    contenido_bytes = descargar_archivo_de_r2(key_path)
+    if contenido_bytes is None:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en la nube.")
+    
+    return StreamingResponse(io.BytesIO(contenido_bytes), media_type="application/x-sqlite3")
+
+async def subir_archivo_sincronizacion(key_path: str, file: UploadFile, current_user: dict):
+    contenido_bytes = await file.read()
+    if subir_archivo_a_r2(key_path, contenido_bytes):
+        return {"status": "ok", "message": "Archivo subido exitosamente."}
+    else:
+        raise HTTPException(status_code=500, detail="Error al subir el archivo a la nube.")
