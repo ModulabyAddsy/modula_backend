@@ -137,3 +137,29 @@ class SolicitudReseteo(BaseModel):
 class EjecutarReseteo(BaseModel):
     token: str
     nueva_contrasena: str = Field(..., min_length=6)
+    
+class FileInfo(BaseModel):
+    """Representa un archivo con su ruta y fecha de modificación."""
+    key: str
+    last_modified: datetime
+
+class SyncCheckRequest(BaseModel):
+    """Lo que el software cliente enviará al backend."""
+    id_sucursal_actual: int
+    archivos_locales: List[FileInfo]
+
+class SyncSchemaAction(BaseModel):
+    """Una acción a realizar sobre el esquema (crear un archivo nuevo)."""
+    accion: str = "descargar_nuevo"
+    key_origen: str # Ruta del archivo en la carpeta _modelo
+    key_destino: str # Ruta donde se debe guardar en la carpeta del cliente
+
+class SyncDataAction(BaseModel):
+    """Una acción a realizar sobre los datos (subir o bajar un archivo)."""
+    accion: str # "descargar_actualizacion" o "subir_actualizacion"
+    key: str # Ruta del archivo a mover
+
+class SyncCheckResponse(BaseModel):
+    """La respuesta completa del backend con el plan de sincronización."""
+    schema_actions: List[SyncSchemaAction]
+    data_actions: List[SyncDataAction]

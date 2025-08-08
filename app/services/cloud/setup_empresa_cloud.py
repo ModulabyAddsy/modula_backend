@@ -118,3 +118,26 @@ def descargar_archivo_db(ruta_cloud_origen: str) -> bytes | None:
         # Es normal que aquí pueda dar un error si el archivo no existe aún
         print(f"⚠️  No se pudo descargar el archivo de R2 en '{ruta_cloud_origen}': {e}")
         return None
+    
+def listar_archivos_con_metadata(prefix: str) -> list:
+    """
+    Lista todos los archivos bajo un prefijo (carpeta) en R2 y devuelve
+    una lista de diccionarios con su ruta ('key') y fecha de última modificación.
+    """
+    lista_archivos = []
+    try:
+        paginator = s3.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=BUCKET_NAME, Prefix=prefix)
+        for page in pages:
+            if 'Contents' in page:
+                for obj in page['Contents']:
+                    # Omitimos las carpetas mismas, solo nos interesan los archivos
+                    if not obj['Key'].endswith('/'):
+                        lista_archivos.append({
+                            'key': obj['Key'],
+                            'last_modified': obj['LastModified']
+                        })
+    except Exception as e:
+        print(f"❌ Error listando archivos en R2 para el prefijo '{prefix}': {e}")
+    
+    return lista_archivos

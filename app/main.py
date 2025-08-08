@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # Importamos los enrutadores (endpoints) de la aplicación.
 # <-- 1. Importar el nuevo enrutador de sucursales
-from app.routes import auth, terminal, stripe_routes, suscripcion_routes, sucursales
+from app.routes import auth, terminal, stripe_routes, suscripcion_routes, sucursales, sync
 
 app = FastAPI(title="Modula Backend v2", version="2.0.0")
 
@@ -30,6 +30,17 @@ app.include_router(suscripcion_routes.router, prefix="/suscripciones", tags=["Su
 # <-- 2. Registrar el nuevo enrutador en la aplicación
 # El prefijo y la etiqueta ya se definieron en el archivo 'app/routes/sucursales.py'
 app.include_router(sucursales.router) 
+
+app.include_router(stripe_routes.router, tags=["Stripe Webhooks"])
+
+
+@app.get("/")
+def root():
+    """Endpoint principal para verificar que el backend está activo."""
+    return {"message": "Modula backend v2 activo 🚀"}
+
+# ✅ NUEVO: Registrar el enrutador de sincronización en la aplicación
+app.include_router(sync.router)
 
 app.include_router(stripe_routes.router, tags=["Stripe Webhooks"])
 
