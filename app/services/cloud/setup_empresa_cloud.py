@@ -120,8 +120,8 @@ def descargar_archivo_db(ruta_cloud_origen: str) -> bytes | None:
     
 def listar_archivos_con_metadata(prefix: str) -> list:
     """
-    Lista todos los archivos bajo un prefijo (carpeta) en R2 y devuelve
-    una lista de diccionarios con su ruta ('key') y fecha de última modificación.
+    Lista todos los archivos bajo un prefijo en R2 y devuelve su metadata clave.
+    IGNORA los directorios y AÑADE el ETag (hash).
     """
     lista_archivos = []
     try:
@@ -130,11 +130,12 @@ def listar_archivos_con_metadata(prefix: str) -> list:
         for page in pages:
             if 'Contents' in page:
                 for obj in page['Contents']:
-                    # Omitimos las carpetas mismas, solo nos interesan los archivos
+                    # Guardia de seguridad: Omitimos las carpetas, solo nos interesan los archivos.
                     if not obj['Key'].endswith('/'):
                         lista_archivos.append({
                             'key': obj['Key'],
-                            'last_modified': obj['LastModified']
+                            'LastModified': obj['LastModified'],  # <-- CORREGIDO: Usamos la 'L' mayúscula original de boto3
+                            'httpEtag': obj['ETag'].strip('"') # <-- AÑADIDO: Incluimos el hash y lo nombramos igual que en la otra función
                         })
     except Exception as e:
         print(f"❌ Error listando archivos en R2 para el prefijo '{prefix}': {e}")
