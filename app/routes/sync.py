@@ -3,8 +3,9 @@ from fastapi import APIRouter, Depends, UploadFile, File
 from app.controller import sync_controller
 from app.services.models import SyncCheckRequest, SyncCheckResponse, PlanSincronizacionResponse
 from app.services.security import get_current_active_user
-from fastapi.responses import StreamingResponse, Header
+from fastapi.responses import StreamingResponse
 from typing import Optional
+from fastapi import Header, Depends, APIRouter # Header se importa desde fastapi
 
 router = APIRouter(
     prefix="/sync",
