@@ -160,7 +160,12 @@ class SyncDataAction(BaseModel):
     """Una acción a realizar sobre los datos (subir o bajar un archivo)."""
     accion: str # "descargar_actualizacion" o "subir_actualizacion"
     key: str # Ruta del archivo a mover
-    
+
+class SyncCheckResponse(BaseModel):
+    """La respuesta completa del backend con el plan de sincronización."""
+    id_sucursal_actual: int
+    archivos_locales: List[FileInfo] # <-- Nombre corregido
+
 class PlanSincronizacionResponse(BaseModel):
     """
     Define la estructura de la respuesta para el plan de sincronización inteligente.
