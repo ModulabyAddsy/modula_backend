@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, UploadFile, File
 from app.controller import sync_controller
 from app.services.models import SyncCheckRequest, SyncCheckResponse, PlanSincronizacionResponse
 from app.services.security import get_current_active_user
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Header
+from typing import Optional
 
 router = APIRouter(
     prefix="/sync",
@@ -29,8 +30,13 @@ def endpoint_download_file(key_path: str, current_user: dict = Depends(get_curre
     return sync_controller.descargar_archivo_sincronizacion(key_path, current_user)
 
 @router.post("/upload/{key_path:path}")
-async def endpoint_upload_file(key_path: str, file: UploadFile = File(...), current_user: dict = Depends(get_current_active_user)):
+async def endpoint_upload_file(
+    key_path: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_active_user),
+    x_base_version_hash: Optional[str] = Header(None) # Leemos el header personalizado
+):
     """
-    Sube un archivo del cliente a su nube.
+    Sube un archivo del cliente a su nube, verificando conflictos.
     """
-    return await sync_controller.subir_archivo_sincronizacion(key_path, file, current_user)
+    return await sync_controller.subir_archivo_sincronizacion(key_path, file, current_user, x_base_version_hash)

@@ -1,10 +1,9 @@
 # app/services/cloud/setup_empresa_cloud.py
 # Gestiona la creación de estructuras de carpetas en Cloudflare R2 para empresas y sucursales.
-
-import boto3
 import os
+import boto3
+from botocore.exceptions import ClientError
 from dotenv import load_dotenv
-
 # Cargar variables de entorno
 load_dotenv()
 
@@ -159,3 +158,29 @@ def subir_archivo_a_r2(ruta_cloud_destino: str, contenido_archivo: bytes) -> boo
     except Exception as e:
         print(f"❌ Error al subir a R2 en '{ruta_cloud_destino}': {e}")
         return False
+
+def obtener_metadata_de_r2(key_path: str) -> dict | None:
+    """
+    Obtiene la metadata de un objeto en R2 sin descargar el archivo completo.
+    Devuelve un diccionario con la metadata o None si el archivo no existe.
+    """
+    try:
+        # CAMBIO 1: Usamos tu cliente 's3' en lugar de 'r2_client'
+        response = s3.head_object(
+            # CAMBIO 2: Usamos tu variable 'BUCKET_NAME'
+            Bucket=BUCKET_NAME,
+            Key=key_path
+        )
+        # El ETag (hash MD5 en R2) viene con comillas, hay que quitarlas.
+        http_etag = response.get('ETag', '').strip('"')
+        
+        return {
+            "httpEtag": http_etag,
+            "lastModified": response.get('LastModified'),
+            "contentLength": response.get('ContentLength')
+        }
+    except ClientError as e:
+        if e.response['Error']['Code'] == '404':
+            return None
+        print(f"Error obteniendo metadata de '{key_path}': {e}")
+        raise

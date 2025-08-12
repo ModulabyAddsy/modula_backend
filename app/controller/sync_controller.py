@@ -2,9 +2,9 @@
 from app.services.models import SyncCheckRequest, SyncCheckResponse, SyncSchemaAction, SyncDataAction
 from app.services.cloud.setup_empresa_cloud import listar_archivos_con_metadata
 from app.services.db import buscar_terminal_activa_por_id
-from app.services.cloud.setup_empresa_cloud import descargar_archivo_de_r2, subir_archivo_a_r2
+from app.services.cloud.setup_empresa_cloud import descargar_archivo_de_r2, subir_archivo_a_r2, obtener_metadata_de_r2
 from fastapi.responses import StreamingResponse
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException, UploadFile, Response, status # Añadir Response y status
 import io
 import sqlite3
 import tempfile
@@ -20,7 +20,16 @@ def descargar_archivo_sincronizacion(key_path: str, current_user: dict):
     
     return StreamingResponse(io.BytesIO(contenido_bytes), media_type="application/x-sqlite3")
 
-async def subir_archivo_sincronizacion(key_path: str, file: UploadFile, current_user: dict):
+async def subir_archivo_sincronizacion(key_path: str, file: UploadFile, current_user: dict, base_hash: str | None):
+    # Obtener el hash del archivo actual en la nube (si existe)
+    metadata_nube = obtener_metadata_de_r2(key_path) # Necesitarás una función que solo traiga la metadata
+    hash_actual_nube = metadata_nube.get('httpEtag') if metadata_nube else None
+
+    # Si el cliente envió un hash base y no coincide con el hash actual, hay un conflicto
+    if base_hash and hash_actual_nube and base_hash != hash_actual_nube:
+        return Response(status_code=status.HTTP_409_CONFLICT, content="Conflicto: La versión en la nube ha cambiado.")
+
+    # Si no hay conflicto, proceder con la subida
     contenido_bytes = await file.read()
     if subir_archivo_a_r2(key_path, contenido_bytes):
         return {"status": "ok", "message": "Archivo subido exitosamente."}
