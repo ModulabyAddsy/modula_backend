@@ -1,7 +1,7 @@
 # app/routes/sync.py
 from fastapi import APIRouter, Depends, UploadFile, File
 from app.controller import sync_controller
-from app.services.models import SyncCheckRequest, SyncCheckResponse
+from app.services.models import SyncCheckRequest, SyncCheckResponse, PlanSincronizacionResponse
 from app.services.security import get_current_active_user
 from fastapi.responses import StreamingResponse
 
@@ -10,7 +10,7 @@ router = APIRouter(
     tags=["Sincronización"]
 )
 
-@router.post("/check", response_model=SyncCheckResponse)
+@router.post("/check", response_model=PlanSincronizacionResponse)
 def endpoint_check_sync(
     sync_request: SyncCheckRequest,
     current_user: dict = Depends(get_current_active_user)

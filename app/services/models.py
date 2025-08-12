@@ -3,7 +3,7 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import date, datetime
 from uuid import UUID
-
+from typing import List, Dict, Any
 # --- Modelos de Autenticación (Existentes) ---
 
 class RegistroCuenta(BaseModel):
@@ -163,3 +163,12 @@ class SyncCheckResponse(BaseModel):
     """La respuesta completa del backend con el plan de sincronización."""
     schema_actions: List[SyncSchemaAction]
     data_actions: List[SyncDataAction]
+    
+class PlanSincronizacionResponse(BaseModel):
+    """
+    Define la estructura de la respuesta para el plan de sincronización inteligente.
+    """
+    status: str                 # ej: "plan_generado"
+    id_empresa: str             # ej: "MOD_EMP_1001"
+    id_sucursal_activa: int     # ej: 25
+    acciones: List[Dict[str, Any]] # La lista unificada de acciones a ejecutar
