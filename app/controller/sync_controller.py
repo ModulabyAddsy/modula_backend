@@ -175,7 +175,7 @@ def verificar_y_planificar_sincronizacion(sync_request: SyncCheckRequest, curren
                     # Solo actuar si los contenidos (hashes) son diferentes
                     if hash_local != hash_cloud:
                         fecha_local = archivo_local_info.last_modified
-                        fecha_cloud = meta_datos['lastModified']
+                        fecha_cloud = meta_datos['LastModified']
                         
                         if fecha_cloud > fecha_local:
                             # La nube es más reciente, se descarga
