@@ -1,4 +1,5 @@
 # app/services/models.py
+from __future__ import annotations
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import date, datetime
@@ -142,7 +143,8 @@ class FileInfo(BaseModel):
     """Representa un archivo con su ruta y fecha de modificación."""
     key: str
     last_modified: datetime
-
+    hash: str
+    
 class SyncCheckRequest(BaseModel):
     """Lo que el software cliente enviará al backend."""
     id_sucursal_actual: int
@@ -158,11 +160,6 @@ class SyncDataAction(BaseModel):
     """Una acción a realizar sobre los datos (subir o bajar un archivo)."""
     accion: str # "descargar_actualizacion" o "subir_actualizacion"
     key: str # Ruta del archivo a mover
-
-class SyncCheckResponse(BaseModel):
-    """La respuesta completa del backend con el plan de sincronización."""
-    schema_actions: List[SyncSchemaAction]
-    data_actions: List[SyncDataAction]
     
 class PlanSincronizacionResponse(BaseModel):
     """

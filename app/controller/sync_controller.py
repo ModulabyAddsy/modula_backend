@@ -8,6 +8,7 @@ from fastapi import HTTPException, UploadFile, Response, status # Añadir Respon
 import io
 import sqlite3
 import tempfile
+from botocore.exceptions import ClientError
 
 MODELO_DATABASES_GENERALES = "_modelo/databases_generales/"
 MODELO_DATABASES_SUCURSAL = "_modelo/plantilla_sucursal/"
@@ -108,50 +109,50 @@ def comparar_esquemas_db(bytes_db_modelo: bytes, bytes_db_cliente: bytes) -> lis
     return comandos_sql
 
 def verificar_y_planificar_sincronizacion(sync_request: SyncCheckRequest, current_user: dict):
+    """
+    Genera un plan de sincronización inteligente comparando esquemas, fechas y hashes de contenido.
+    """
     id_empresa = current_user['id_empresa_addsy']
     id_sucursal_actual = sync_request.id_sucursal_actual
     
     plan_acciones = []
 
     # --- RUTAS EN LA NUBE ---
-    # Rutas del modelo de la aplicación
     MODELO_GENERALES = "_modelo/databases_generales/"
     MODELO_SUCURSAL = "_modelo/plantilla_sucursal/"
-    
-    # Rutas de los datos específicos de la empresa
-    # La estructura es: ID_EMPRESA/TIPO/NOMBRE_DB.sqlite
-    # ej: MOD_EMP_1001/databases_generales/clientes.sqlite
-    # ej: MOD_EMP_1001/suc_25/ventas.sqlite
     RUTA_DATOS_GENERALES = f"{id_empresa}/databases_generales/"
     RUTA_DATOS_SUCURSAL = f"{id_empresa}/suc_{id_sucursal_actual}/"
 
+    # Convierte la lista de archivos locales en un diccionario para búsquedas rápidas
     archivos_locales = {f.key: f for f in sync_request.archivos_locales}
 
     # --- FUNCIÓN DE AYUDA INTERNA ---
     def procesar_conjunto_de_dbs(ruta_modelo, ruta_datos, tipo_db):
-        """Procesa un conjunto (generales o de sucursal) para generar acciones."""
         archivos_cloud_modelo = {f['key'].split('/')[-1]: f for f in listar_archivos_con_metadata(ruta_modelo)}
-        archivos_cloud_datos = {f['key'].split('/')[-1]: f for f in listar_archivos_con_metadata(ruta_datos)}
+        
+        # Maneja el caso en que un directorio en la nube pueda no existir o estar vacío
+        try:
+            archivos_cloud_datos = {f['key'].split('/')[-1]: f for f in listar_archivos_con_metadata(ruta_datos)}
+        except (ClientError, TypeError, Exception):
+            archivos_cloud_datos = {}
 
         for nombre_db, meta_modelo in archivos_cloud_modelo.items():
             key_modelo = meta_modelo['key']
             key_datos_nube = f"{ruta_datos}{nombre_db}"
-            
-            # La ruta relativa que usará el cliente para guardar el archivo
             ruta_relativa_cliente = f"{tipo_db}/{nombre_db}"
 
             if nombre_db not in archivos_cloud_datos:
-                # CASO 1: La DB del modelo no existe para este cliente. Hay que crearla.
+                # CASO 1: La DB del modelo no existe para este cliente, se descarga por primera vez.
                 plan_acciones.append({
                     "accion": "descargar_db_modelo",
                     "origen_cloud": key_modelo,
                     "destino_relativo": ruta_relativa_cliente
                 })
             else:
-                # CASO 2: La DB ya existe. Hay que comparar esquema y fechas.
+                # CASO 2: La DB ya existe, se procede a comparar.
                 meta_datos = archivos_cloud_datos[nombre_db]
 
-                # Comparar esquemas
+                # Comparación de Esquema (sin cambios)
                 bytes_modelo = descargar_archivo_de_r2(key_modelo)
                 bytes_cliente = descargar_archivo_de_r2(key_datos_nube)
                 comandos_sql = comparar_esquemas_db(bytes_modelo, bytes_cliente)
@@ -163,28 +164,47 @@ def verificar_y_planificar_sincronizacion(sync_request: SyncCheckRequest, curren
                         "comandos_sql": comandos_sql
                     })
 
-                # Comparar timestamps para sincronización de datos
-                key_local = f"{id_empresa}/{ruta_relativa_cliente}"
-                if key_local in archivos_locales:
-                    fecha_local = archivos_locales[key_local].last_modified
-                    fecha_cloud = meta_datos['last_modified']
+                # --- LÓGICA DE SINCRONIZACIÓN DE DATOS MODIFICADA ---
+                key_local_completa = f"{id_empresa}/{ruta_relativa_cliente}"
+                archivo_local_info = archivos_locales.get(key_local_completa)
+                hash_cloud = meta_datos.get('httpEtag')
+
+                if archivo_local_info:  # El archivo existe en el cliente
+                    hash_local = archivo_local_info.hash
                     
-                    if fecha_cloud > fecha_local:
-                        plan_acciones.append({"accion": "actualizar_datos", "key_cloud": key_datos_nube, "destino_relativo": ruta_relativa_cliente})
-                    elif fecha_local > fecha_cloud:
-                        plan_acciones.append({"accion": "subir_db", "origen_relativo": ruta_relativa_cliente, "key_cloud": key_datos_nube})
+                    # Solo actuar si los contenidos (hashes) son diferentes
+                    if hash_local != hash_cloud:
+                        fecha_local = archivo_local_info.last_modified
+                        fecha_cloud = meta_datos['lastModified']
+                        
+                        if fecha_cloud > fecha_local:
+                            # La nube es más reciente, se descarga
+                            plan_acciones.append({
+                                "accion": "actualizar_datos", 
+                                "key_cloud": key_datos_nube, 
+                                "destino_relativo": ruta_relativa_cliente
+                            })
+                        else:
+                            # El local es más reciente, se sube
+                            plan_acciones.append({
+                                "accion": "subir_db", 
+                                "origen_relativo": ruta_relativa_cliente, 
+                                "key_cloud": key_datos_nube,
+                                "hash_base": hash_cloud  # Se envía el hash de la nube como base para el control de conflictos
+                            })
                 else:
-                    # Si no está local, hay que bajarla
-                    plan_acciones.append({"accion": "actualizar_datos", "key_cloud": key_datos_nube, "destino_relativo": ruta_relativa_cliente})
+                    # El archivo no existe localmente, se debe descargar
+                    plan_acciones.append({
+                        "accion": "actualizar_datos", 
+                        "key_cloud": key_datos_nube, 
+                        "destino_relativo": ruta_relativa_cliente
+                    })
 
     # --- EJECUCIÓN DEL PROCESO ---
-    # Primero, asegurar que los directorios base existan en el cliente
     plan_acciones.append({"accion": "ensure_dir", "ruta_relativa": "databases_generales/"})
     plan_acciones.append({"accion": "ensure_dir", "ruta_relativa": f"suc_{id_sucursal_actual}/"})
 
-    # Procesar bases de datos generales
     procesar_conjunto_de_dbs(MODELO_GENERALES, RUTA_DATOS_GENERALES, "databases_generales")
-    # Procesar bases de datos de sucursal
     procesar_conjunto_de_dbs(MODELO_SUCURSAL, RUTA_DATOS_SUCURSAL, f"suc_{id_sucursal_actual}")
 
     return {
