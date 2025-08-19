@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # Importamos los enrutadores (endpoints) de la aplicación.
 # <-- 1. Importar el nuevo enrutador de sucursales
 from app.routes import auth, terminal, stripe_routes, suscripcion_routes, sucursales, sync
+from app.controller import sync_controller
 
 app = FastAPI(title="Modula Backend v2", version="2.0.0")
 
@@ -27,6 +28,7 @@ app.include_router(auth.router, prefix="/auth", tags=["Autenticación"])
 app.include_router(terminal.router, prefix="/terminales", tags=["Terminales"])
 app.include_router(suscripcion_routes.router, prefix="/suscripciones", tags=["Suscripciones"])
 
+app.include_router(sync_controller.router, prefix="/sync", tags=["Sincronización"])
 # <-- 2. Registrar el nuevo enrutador en la aplicación
 # El prefijo y la etiqueta ya se definieron en el archivo 'app/routes/sucursales.py'
 app.include_router(sucursales.router) 
