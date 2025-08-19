@@ -13,7 +13,9 @@ from .db import buscar_cuenta_addsy_por_correo
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "una-clave-secreta-muy-dificil-de-adivinar")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if SECRET_KEY is None:
+    raise ValueError("La variable de entorno SECRET_KEY no está definida. La aplicación no puede iniciar.")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 8 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
