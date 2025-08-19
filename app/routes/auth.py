@@ -44,7 +44,7 @@ async def login(data: LoginData, request: Request): # 1. Añadir 'request: Reque
     summary="Verifica una terminal al arranque",
     tags=["Autenticación"]
 )
-async def verificar_terminal_activa_route(
+def verificar_terminal_activa_route(
     request_data: models.TerminalVerificationRequest, 
     request: Request 
 ):
@@ -55,7 +55,7 @@ async def verificar_terminal_activa_route(
     # Llama a la función del controlador que contiene toda la lógica.
     # La ruta se mantiene limpia y solo se encarga de recibir la petición
     # y devolver la respuesta.
-    return await auth_controller.verificar_terminal_activa_controller(
+    return auth_controller.verificar_terminal_activa_controller(
         request_data=request_data,
         client_ip=request.client.host
     )
