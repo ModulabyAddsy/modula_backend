@@ -42,7 +42,7 @@ class Suscripcion(BaseModel):
     espacio_usado_bytes: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # --- 👉 Nuevos Modelos para Terminales ---
 
@@ -62,7 +62,7 @@ class Terminal(TerminalBase):
     ultima_sincronizacion: Optional[datetime]
 
     class Config:
-        orm_mode = True
+        from_attributes = True
         
 class SucursalInfo(BaseModel):
     """Modelo simple para listas de sucursales."""
@@ -96,7 +96,7 @@ class TerminalVerificationResponse(BaseModel):
     sucursales_existentes: Optional[List[SucursalInfo]] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
     
 class SucursalCreate(BaseModel):
     """Modelo para la creación de una sucursal. Solo necesitamos el nombre."""
@@ -112,7 +112,7 @@ class Sucursal(BaseModel):
     ruta_cloud: Optional[str] = None
 
     class Config:
-        orm_mode = True # Permite que el modelo se cree desde un objeto de BD
+        from_attributes = True # Permite que el modelo se cree desde un objeto de BD
 
 class AsignarTerminalRequest(BaseModel):
     """Modelo para la petición de migrar o asignar una terminal."""
@@ -174,13 +174,6 @@ class PlanSincronizacionResponse(BaseModel):
     id_empresa: str             # ej: "MOD_EMP_1001"
     id_sucursal_activa: int     # ej: 25
     acciones: List[Dict[str, Any]] # La lista unificada de acciones a ejecutar
-    
-class RecordData(BaseModel):
-    """
-    Representa un único registro (fila) de una tabla como un diccionario.
-    Este es un modelo genérico para asegurar que cada registro sea un objeto JSON.
-    """
-    __root__: Dict[str, Any]
 
 class PushRecordsRequest(BaseModel):
     """
