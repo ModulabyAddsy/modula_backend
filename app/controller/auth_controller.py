@@ -37,49 +37,6 @@ from app.services.employee_service import anadir_primer_administrador
 from app.services.cloud.setup_empresa_cloud import subir_archivo_db
 from app.services.utils import generar_contrasena_temporal, generar_token_verificacion, get_ip_geolocation
 from app.services.mail import enviar_correo_credenciales, enviar_correo_reseteo
-from threading import Lock
-import time
-import httpx
-
-# --- INICIO: NUEVA SECCIÓN DE CACHÉ DE GEOLOCALIZACIÓN ---
-geo_cache = {}
-CACHE_DURATION_SECONDS = 3600 # Guardar resultados por 1 hora
-cache_lock = Lock()
-
-async def get_geolocation_with_cache(ip: str) -> dict:
-    """
-    Obtiene datos de geolocalización para una IP, usando un caché en memoria
-    para evitar exceder los límites de la API. Devuelve un diccionario vacío si falla.
-    """
-    current_time = time.time()
-    
-    with cache_lock:
-        # 1. Revisa si la IP está en el caché y si aún es válida
-        if ip in geo_cache and current_time < geo_cache[ip]['expires']:
-            print(f"🌍 Devolviendo geolocalización desde caché para IP: {ip}")
-            return geo_cache[ip]['data']
-
-    # 2. Si no está en caché o expiró, llama a la API externa
-    print(f"🌍 Consultando API externa de geolocalización para IP: {ip}")
-    try:
-        url = f"http://ip-api.com/json/{ip}?fields=status,city,regionName,country,isp"
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, timeout=5.0)
-        response.raise_for_status()
-        data = response.json()
-
-        # 3. Guarda el nuevo resultado en el caché
-        with cache_lock:
-            geo_cache[ip] = {
-                'data': data,
-                'expires': current_time + CACHE_DURATION_SECONDS
-            }
-        return data
-    except Exception as e:
-        print(f"⚠️ No se pudo obtener la geolocalización para la IP {ip}. Error: {e}")
-        # Devolvemos un diccionario vacío para que el resto del código no falle
-        return {}
-
 
 #COMENTARIO PARA SUBIR A GITHUB
 
@@ -218,7 +175,7 @@ async def verificar_cuenta(request: Request):
     
     return HTMLResponse("<h2>✅ ¡Todo listo! Tu cuenta ha sido configurada. Revisa tu correo para obtener tus credenciales de acceso.</h2>")
 
-async def verificar_terminal_activa_controller(
+def verificar_terminal_activa_controller(
     request_data: models.TerminalVerificationRequest, client_ip: str
 ) -> models.TerminalVerificationResponse:
     
@@ -234,41 +191,48 @@ async def verificar_terminal_activa_controller(
         estado = suscripcion['estado_suscripcion'] if suscripcion else 'desconocido'
         raise HTTPException(status_code=403, detail=f"Suscripción no válida. Estado: {estado}")
 
+    # --- LÓGICA DE VERIFICACIÓN DE UBICACIÓN INTELIGENTE ---
+    
+    # Primero, actualizamos la IP actual en la tabla de terminales.
+    # Esto mantiene un registro de la última IP conocida, sea válida o no.
     actualizar_ip_terminal(request_data.id_terminal, client_ip)
     
-    # 2. ✅ Añadir 'await' para esperar el resultado de la función asíncrona
-    geo_actual = await get_geolocation_with_cache(client_ip)
+    # Obtenemos la "huella digital" de la ubicación actual
+    geo_actual = get_ip_geolocation(client_ip)
     
+    # Obtenemos las ubicaciones que ya hemos autorizado para la sucursal a la que esta terminal PERTENECE
     ubicaciones_autorizadas = get_ubicaciones_autorizadas(id_sucursal_asignada)
+    
     coincidencia_encontrada = False
 
-    # ... (El resto de tu función se mantiene exactamente igual) ...
     if not ubicaciones_autorizadas:
+        # Si no hay ninguna ubicación autorizada para esta sucursal, es la primera vez que se usa.
+        # La autorizamos automáticamente y permitimos el acceso.
         print(f"📍 Primera ubicación para sucursal {id_sucursal_asignada}. Autorizando automáticamente.")
-        if geo_actual:
-            autorizar_nueva_ubicacion(id_sucursal_asignada, client_ip, geo_actual)
+        autorizar_nueva_ubicacion(id_sucursal_asignada, client_ip, geo_actual)
         coincidencia_encontrada = True
     else:
-        if geo_actual:
-            for ubicacion in ubicaciones_autorizadas:
-                if ubicacion.get('isp') == geo_actual.get('isp') and ubicacion.get('ciudad') == geo_actual.get('ciudad'):
-                    coincidencia_encontrada = True
-                    break
+        # Si ya hay ubicaciones autorizadas, comparamos la actual con la lista.
+        for ubicacion in ubicaciones_autorizadas:
+            # La comparación es por ISP y Ciudad, que es más estable que la IP exacta.
+            if ubicacion.get('isp') == geo_actual.get('isp') and ubicacion.get('ciudad') == geo_actual.get('ciudad'):
+                coincidencia_encontrada = True
+                break
+    
+    # --- FLUJO DE DECISIÓN ---
     
     if coincidencia_encontrada:
+        # Si la ubicación es correcta, damos acceso.
         print(f"✅ Ubicación verificada para terminal {request_data.id_terminal}.")
         actualizar_contadores_suscripcion(id_cuenta)
         
         access_token_data = {
-            "sub": terminal_info["correo"],
-            "id_cuenta_addsy": id_cuenta,
-            "id_sucursal": id_sucursal_asignada,
+            "sub": terminal_info["correo"], "id": id_cuenta,
             "id_empresa_addsy": terminal_info["id_empresa_addsy"]
         }
         access_token = security.crear_access_token(data=access_token_data)
         
         return models.TerminalVerificationResponse(
-            status="ok",
             access_token=access_token,
             id_empresa=terminal_info["id_empresa_addsy"],
             nombre_empresa=terminal_info["nombre_empresa"],
@@ -277,24 +241,31 @@ async def verificar_terminal_activa_controller(
             estado_suscripcion=suscripcion['estado_suscripcion']
         )
     else:
-        print(f"⚠️ Conflicto de ubicación para terminal {request_data.id_terminal}.")
+        # Si NO coincide, es un conflicto. Ahora investigamos si se movió a OTRA sucursal.
+        print(f"⚠️ Conflicto de ubicación para terminal {request_data.id_terminal}. No está en su sucursal asignada.")
+        
         todas_las_sucursales_dict = get_sucursales_por_cuenta(id_cuenta)
         sugerencia_migracion = None
-        if geo_actual:
-            for otra_sucursal in todas_las_sucursales_dict:
-                if otra_sucursal['id'] == id_sucursal_asignada: continue
-                ubicaciones_otra_sucursal = get_ubicaciones_autorizadas(otra_sucursal['id'])
-                for ubicacion_otra in ubicaciones_otra_sucursal:
-                    if ubicacion_otra.get('isp') == geo_actual.get('isp') and ubicacion_otra.get('ciudad') == geo_actual.get('ciudad'):
-                        sugerencia_migracion = models.SucursalInfo(**otra_sucursal)
-                        break
-                if sugerencia_migracion: break
+        
+        for otra_sucursal in todas_las_sucursales_dict:
+            if otra_sucursal['id'] == id_sucursal_asignada:
+                continue  # No comparamos con la sucursal a la que ya debería pertenecer
+            
+            ubicaciones_otra_sucursal = get_ubicaciones_autorizadas(otra_sucursal['id'])
+            for ubicacion_otra in ubicaciones_otra_sucursal:
+                if ubicacion_otra.get('isp') == geo_actual.get('isp') and ubicacion_otra.get('ciudad') == geo_actual.get('ciudad'):
+                    # ¡Bingo! La ubicación actual coincide con una ubicación autorizada de OTRA sucursal.
+                    sugerencia_migracion = models.SucursalInfo(**otra_sucursal)
+                    break
+            if sugerencia_migracion:
+                break
+
+        # Devolvemos la respuesta de conflicto, que puede incluir o no la sugerencia de migración.
         return models.TerminalVerificationResponse(
             status="location_mismatch",
             sugerencia_migracion=sugerencia_migracion,
             sucursales_existentes=[models.SucursalInfo(**s) for s in todas_las_sucursales_dict]
         )
-
 
 async def check_activation_status(claim_token: str):
     """
