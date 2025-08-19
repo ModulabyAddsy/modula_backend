@@ -577,3 +577,24 @@ def autorizar_nueva_ubicacion(id_sucursal: int, ip: str, geo_data: dict):
         return False
     finally:
         if conn: conn.close()
+        
+def get_sucursal_info(id_sucursal: int):
+    """
+    Busca y devuelve toda la información de una sucursal específica por su ID.
+    Esencial para obtener la 'ruta_cloud' durante la sincronización.
+    """
+    conn = get_connection()
+    if not conn: return None
+    
+    query = "SELECT * FROM sucursales WHERE id = %s;"
+    
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, (id_sucursal,))
+            sucursal_data = cur.fetchone()
+        return sucursal_data
+    except Exception as e:
+        print(f"🔥🔥 ERROR al buscar información de la sucursal por ID: {e}")
+        return None
+    finally:
+        if conn: conn.close()

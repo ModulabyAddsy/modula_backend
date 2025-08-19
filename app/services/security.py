@@ -66,3 +66,30 @@ def get_current_active_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=403, detail="La cuenta no está activa")
 
     return usuario
+
+def get_current_user_from_token(token: str = Depends(oauth2_scheme)) -> dict:
+    """
+    Dependencia de FastAPI para validar el token y extraer los datos del usuario.
+    Se usará en todos los endpoints protegidos.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="No se pudieron validar las credenciales",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        
+        # Extraemos la información que guardamos al crear el token
+        id_cuenta: int = payload.get("id_cuenta")
+        id_sucursal: int = payload.get("id_sucursal")
+        id_empresa_addsy: str = payload.get("id_empresa_addsy")
+
+        if id_cuenta is None or id_sucursal is None or id_empresa_addsy is None:
+            raise credentials_exception
+        
+        # Devolvemos el diccionario completo para usarlo en los endpoints
+        return payload
+
+    except JWTError:
+        raise credentials_exception

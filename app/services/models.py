@@ -174,3 +174,27 @@ class PlanSincronizacionResponse(BaseModel):
     id_empresa: str             # ej: "MOD_EMP_1001"
     id_sucursal_activa: int     # ej: 25
     acciones: List[Dict[str, Any]] # La lista unificada de acciones a ejecutar
+    
+class RecordData(BaseModel):
+    """
+    Representa un único registro (fila) de una tabla como un diccionario.
+    Este es un modelo genérico para asegurar que cada registro sea un objeto JSON.
+    """
+    __root__: Dict[str, Any]
+
+class PushRecordsRequest(BaseModel):
+    """
+    Define la estructura para que el cliente envíe sus registros locales
+    pendientes de sincronizar a la nube.
+    """
+    db_relative_path: str = Field(..., 
+        example="suc_25/ventas.sqlite", 
+        description="Ruta relativa del archivo de BD desde la carpeta de la empresa.")
+    
+    table_name: str = Field(..., 
+        example="ventas", 
+        description="Nombre de la tabla a la que pertenecen los registros.")
+    
+    # Usamos Dict[str, Any] para que sea flexible a cualquier estructura de tabla.
+    records: List[Dict[str, Any]] = Field(..., 
+        description="La lista de registros (filas como diccionarios) a fusionar.")
