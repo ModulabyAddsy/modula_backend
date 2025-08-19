@@ -50,7 +50,7 @@ async def inicializar_sincronizacion_logic(current_user: dict):
 
 async def recibir_registros_locales_logic(push_request: PushRecordsRequest, current_user: dict):
     id_empresa = current_user['id_empresa_addsy']
-    key_path = f"{id_empresa}/{push_request.db_relative_path}"
+    key_path = push_request.db_relative_path
     print(f"🔄 Recibiendo {len(push_request.records)} registros para fusionar en '{key_path}'")
 
     db_bytes = descargar_archivo_de_r2(key_path)
