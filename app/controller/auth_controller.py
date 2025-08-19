@@ -227,12 +227,15 @@ def verificar_terminal_activa_controller(
         actualizar_contadores_suscripcion(id_cuenta)
         
         access_token_data = {
-            "sub": terminal_info["correo"], "id": id_cuenta,
+            "sub": terminal_info["correo"],
+            "id_cuenta_addsy": id_cuenta,             # ✅ Clave corregida
+            "id_sucursal": id_sucursal_asignada,      # ✅ Clave añadida que faltaba
             "id_empresa_addsy": terminal_info["id_empresa_addsy"]
         }
         access_token = security.crear_access_token(data=access_token_data)
         
         return models.TerminalVerificationResponse(
+            status="ok",
             access_token=access_token,
             id_empresa=terminal_info["id_empresa_addsy"],
             nombre_empresa=terminal_info["nombre_empresa"],
