@@ -81,11 +81,12 @@ def get_current_user_from_token(token: str = Depends(oauth2_scheme)) -> dict:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         
         # Extraemos la información que guardamos al crear el token
-        id_cuenta: int = payload.get("id_cuenta")
+        id_cuenta_addsy: int = payload.get("id_cuenta_addsy") 
         id_sucursal: int = payload.get("id_sucursal")
         id_empresa_addsy: str = payload.get("id_empresa_addsy")
 
-        if id_cuenta is None or id_sucursal is None or id_empresa_addsy is None:
+        # ✅ La condición también se actualiza.
+        if id_cuenta_addsy is None or id_sucursal is None or id_empresa_addsy is None:
             raise credentials_exception
         
         # Devolvemos el diccionario completo para usarlo en los endpoints
