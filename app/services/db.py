@@ -619,6 +619,26 @@ def get_latest_active_version():
     finally:
         if conn: conn.close()
         
+def guardar_stripe_customer_id(id_cuenta: int, stripe_customer_id: str):
+    """Guarda el ID de Cliente de Stripe en la tabla de cuentas."""
+    conn = get_connection()
+    if not conn: return False
+    try:
+        with conn.cursor() as cur:
+            # Asegúrate de que tu tabla 'cuentas_addsy' tenga la columna 'id_cliente_stripe'
+            cur.execute(
+                "UPDATE cuentas_addsy SET id_cliente_stripe = %s WHERE id = %s;",
+                (stripe_customer_id, id_cuenta)
+            )
+            conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"🔥🔥 ERROR guardando stripe_customer_id: {e}")
+        return False
+    finally:
+        if conn: conn.close()
+        
 def buscar_cuenta_addsy_por_id(id_cuenta: int):
     """Busca una cuenta por su ID primario."""
     conn = get_connection()
@@ -631,3 +651,4 @@ def buscar_cuenta_addsy_por_id(id_cuenta: int):
         return cuenta
     finally:
         if conn: conn.close()
+

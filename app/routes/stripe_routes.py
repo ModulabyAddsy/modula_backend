@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 
 # 👉 Importamos las funciones correctas
-from app.services.db import buscar_cuenta_addsy_por_correo, actualizar_cuenta_para_verificacion, guardar_stripe_subscription_id,actualizar_suscripcion_tras_pago
+from app.services.db import buscar_cuenta_addsy_por_correo, actualizar_cuenta_para_verificacion, guardar_stripe_subscription_id,actualizar_suscripcion_tras_pago, guardar_stripe_customer_id
 from app.services.utils import generar_token_verificacion
 from app.services.mail import enviar_correo_verificacion
 
@@ -31,6 +31,7 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
         session = event["data"]["object"]
         metadata = session.get("metadata")
         stripe_subscription_id = session.get("subscription")
+        stripe_customer_id = session.get("customer") # <--- 1. OBTENEMOS EL ID DEL CLIENTE
         session_id = session.get("id")
 
         if not metadata or "correo_usuario" not in metadata:
@@ -48,16 +49,19 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
                 token=token, id_terminal=metadata.get("id_terminal"),
                 id_stripe_session=session_id
             )
+            # --- GUARDAMOS AMBOS IDs ---
             guardar_stripe_subscription_id(cuenta["id"], stripe_subscription_id)
-            print(f"✅ Alta de {correo} procesada. Correo de verificación enviado y sub ID guardado.")
+            guardar_stripe_customer_id(cuenta["id"], stripe_customer_id) # <--- 2. GUARDAMOS EL ID DEL CLIENTE
+
+            print(f"✅ Alta de {correo} procesada. Correo de verificación enviado. Sub ID y Customer ID guardados.")
         else:
             print(f"ℹ️ Webhook 'checkout.session.completed' para {correo} ignorado (estado no es 'pendiente_pago').")
 
-    # --- ✅ NUEVO MANEJADOR PARA PAGOS RECURRENTES EXITOSOS ---
+    # --- MANEJADOR PARA PAGOS RECURRENTES EXITOSOS ---
     elif event["type"] == "invoice.paid":
         invoice = event["data"]["object"]
         
-            # LOG DE DEPURACIÓN
+        # LOG DE DEPURACIÓN
         print("--- DEBUG WEBHOOK 'invoice.paid' ---")
         print(f"Paid: {invoice.get('paid')}")
         print(f"Subscription ID: {invoice.get('subscription')}")
