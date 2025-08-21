@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # Importamos los módulos de rutas de la aplicación.
-from app.routes import auth, terminal, suscripcion_routes, sucursales, sync, stripe_routes
+from app.routes import auth, terminal, suscripcion_routes, sucursales, sync, stripe_routes, update
 
 app = FastAPI(
     title="Modula Backend v2",
@@ -28,6 +28,7 @@ def on_startup():
 # --- Registro de Rutas (Endpoints) ---
 # Cada módulo de rutas se registra una sola vez.
 app.include_router(auth.router, prefix="/auth", tags=["Autenticación"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(terminal.router, prefix="/terminales", tags=["Terminales"])
 app.include_router(suscripcion_routes.router, prefix="/suscripciones", tags=["Suscripciones"])
 app.include_router(sucursales.router, prefix="/sucursales", tags=["Sucursales"])
@@ -35,7 +36,7 @@ app.include_router(stripe_routes.router, tags=["Stripe Webhooks"])
 
 # ✅ NUEVO: Registro ÚNICO y CORRECTO para el enrutador de sincronización
 app.include_router(sync.router, prefix="/sync", tags=["Sincronización"])
-
+app.include_router(update.router, prefix="/api/v1/update", tags=["Update"])
 
 @app.get("/")
 def root():

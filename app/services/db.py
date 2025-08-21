@@ -598,3 +598,23 @@ def get_sucursal_info(id_sucursal: int):
         return None
     finally:
         if conn: conn.close()
+        
+def get_latest_active_version():
+    """
+    Busca en la base de datos la única versión de la aplicación marcada como activa.
+    """
+    conn = get_connection()
+    if not conn: return None
+    
+    query = "SELECT version, url, hash, notes FROM app_versions WHERE is_active = true LIMIT 1;"
+    
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            active_version = cur.fetchone()
+        return active_version # Devuelve el diccionario de la versión o None si no se encuentra
+    except Exception as e:
+        print(f"🔥🔥 ERROR al buscar la versión activa de la app: {e}")
+        return None
+    finally:
+        if conn: conn.close()
