@@ -57,6 +57,12 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
     elif event["type"] == "invoice.paid":
         invoice = event["data"]["object"]
         
+            # LOG DE DEPURACIÓN
+        print("--- DEBUG WEBHOOK 'invoice.paid' ---")
+        print(f"Paid: {invoice.get('paid')}")
+        print(f"Subscription ID: {invoice.get('subscription')}")
+        print("------------------------------------")
+        
         # Nos aseguramos de que el pago fue exitoso y está asociado a una suscripción
         if invoice.get("paid") and invoice.get("subscription"):
             stripe_sub_id = invoice.get("subscription")

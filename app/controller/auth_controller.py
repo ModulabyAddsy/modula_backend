@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse
 # Importaciones de modelos y servicios
 from app.services.models import RegistroCuenta, LoginData, Token
 from app.services import models
-from app.services.stripe_service import crear_sesion_checkout_para_registro
+from app.services.stripe_service import crear_sesion_checkout_para_registro, crear_sesion_portal_cliente
 from app.services.security import hash_contrasena, verificar_contrasena, crear_access_token
 # --- CAMBIO 1: Importar las nuevas funciones de la nube ---
 from app.services.cloud.setup_empresa_cloud import (
@@ -29,7 +29,7 @@ from app.services.db import (
     get_sucursales_por_cuenta, get_sucursales_por_cuenta,
     buscar_cuenta_por_claim_token,guardar_token_reseteo,
     resetear_contrasena_con_token, get_ubicaciones_autorizadas, 
-    autorizar_nueva_ubicacion
+    autorizar_nueva_ubicacion, buscar_cuenta_addsy_por_id   
 )
 from app.services import security
 from app.services import employee_service
@@ -177,7 +177,7 @@ async def verificar_cuenta(request: Request):
 
 def verificar_terminal_activa_controller(
     request_data: models.TerminalVerificationRequest, client_ip: str
-) -> models.TerminalVerificationResponse:
+):
     
     terminal_info = buscar_terminal_activa_por_id(request_data.id_terminal)
     if not terminal_info:
@@ -187,88 +187,87 @@ def verificar_terminal_activa_controller(
     id_sucursal_asignada = terminal_info['id_sucursal']
 
     suscripcion = actualizar_y_verificar_suscripcion(id_cuenta)
-    if not suscripcion or suscripcion['estado_suscripcion'] not in ['activa', 'prueba_gratis']:
-        estado = suscripcion['estado_suscripcion'] if suscripcion else 'desconocido'
-        raise HTTPException(status_code=403, detail=f"Suscripción no válida. Estado: {estado}")
+    
+    # --- ¡NUEVA LÓGICA MEJORADA PARA MANEJAR ESTADOS DE SUSCRIPCIÓN! ---
+    if suscripcion and suscripcion['estado_suscripcion'] in ['activa', 'prueba_gratis']:
+        # --- SI LA SUSCRIPCIÓN ESTÁ ACTIVA, LA LÓGICA DE UBICACIÓN CONTINÚA NORMALMENTE ---
+        print(f"✅ Suscripción activa para cuenta {id_cuenta}. Procediendo con verificación de ubicación.")
+        
+        actualizar_ip_terminal(request_data.id_terminal, client_ip)
+        geo_actual = get_ip_geolocation(client_ip)
+        ubicaciones_autorizadas = get_ubicaciones_autorizadas(id_sucursal_asignada)
+        coincidencia_encontrada = False
 
-    # --- LÓGICA DE VERIFICACIÓN DE UBICACIÓN INTELIGENTE ---
-    
-    # Primero, actualizamos la IP actual en la tabla de terminales.
-    # Esto mantiene un registro de la última IP conocida, sea válida o no.
-    actualizar_ip_terminal(request_data.id_terminal, client_ip)
-    
-    # Obtenemos la "huella digital" de la ubicación actual
-    geo_actual = get_ip_geolocation(client_ip)
-    
-    # Obtenemos las ubicaciones que ya hemos autorizado para la sucursal a la que esta terminal PERTENECE
-    ubicaciones_autorizadas = get_ubicaciones_autorizadas(id_sucursal_asignada)
-    
-    coincidencia_encontrada = False
-
-    if not ubicaciones_autorizadas:
-        # Si no hay ninguna ubicación autorizada para esta sucursal, es la primera vez que se usa.
-        # La autorizamos automáticamente y permitimos el acceso.
-        print(f"📍 Primera ubicación para sucursal {id_sucursal_asignada}. Autorizando automáticamente.")
-        autorizar_nueva_ubicacion(id_sucursal_asignada, client_ip, geo_actual)
-        coincidencia_encontrada = True
-    else:
-        # Si ya hay ubicaciones autorizadas, comparamos la actual con la lista.
-        for ubicacion in ubicaciones_autorizadas:
-            # La comparación es por ISP y Ciudad, que es más estable que la IP exacta.
-            if ubicacion.get('isp') == geo_actual.get('isp') and ubicacion.get('ciudad') == geo_actual.get('ciudad'):
-                coincidencia_encontrada = True
-                break
-    
-    # --- FLUJO DE DECISIÓN ---
-    
-    if coincidencia_encontrada:
-        # Si la ubicación es correcta, damos acceso.
-        print(f"✅ Ubicación verificada para terminal {request_data.id_terminal}.")
-        actualizar_contadores_suscripcion(id_cuenta)
-        
-        access_token_data = {
-            "sub": terminal_info["correo"],
-            "id_cuenta_addsy": id_cuenta,             # ✅ Clave corregida
-            "id_sucursal": id_sucursal_asignada,      # ✅ Clave añadida que faltaba
-            "id_empresa_addsy": terminal_info["id_empresa_addsy"]
-        }
-        access_token = security.crear_access_token(data=access_token_data)
-        
-        return models.TerminalVerificationResponse(
-            status="ok",
-            access_token=access_token,
-            id_empresa=terminal_info["id_empresa_addsy"],
-            nombre_empresa=terminal_info["nombre_empresa"],
-            id_sucursal=terminal_info["id_sucursal"],
-            nombre_sucursal=terminal_info["nombre_sucursal"],
-            estado_suscripcion=suscripcion['estado_suscripcion']
-        )
-    else:
-        # Si NO coincide, es un conflicto. Ahora investigamos si se movió a OTRA sucursal.
-        print(f"⚠️ Conflicto de ubicación para terminal {request_data.id_terminal}. No está en su sucursal asignada.")
-        
-        todas_las_sucursales_dict = get_sucursales_por_cuenta(id_cuenta)
-        sugerencia_migracion = None
-        
-        for otra_sucursal in todas_las_sucursales_dict:
-            if otra_sucursal['id'] == id_sucursal_asignada:
-                continue  # No comparamos con la sucursal a la que ya debería pertenecer
-            
-            ubicaciones_otra_sucursal = get_ubicaciones_autorizadas(otra_sucursal['id'])
-            for ubicacion_otra in ubicaciones_otra_sucursal:
-                if ubicacion_otra.get('isp') == geo_actual.get('isp') and ubicacion_otra.get('ciudad') == geo_actual.get('ciudad'):
-                    # ¡Bingo! La ubicación actual coincide con una ubicación autorizada de OTRA sucursal.
-                    sugerencia_migracion = models.SucursalInfo(**otra_sucursal)
+        if not ubicaciones_autorizadas:
+            print(f"📍 Primera ubicación para sucursal {id_sucursal_asignada}. Autorizando automáticamente.")
+            autorizar_nueva_ubicacion(id_sucursal_asignada, client_ip, geo_actual)
+            coincidencia_encontrada = True
+        else:
+            for ubicacion in ubicaciones_autorizadas:
+                if ubicacion.get('isp') == geo_actual.get('isp') and ubicacion.get('ciudad') == geo_actual.get('ciudad'):
+                    coincidencia_encontrada = True
                     break
-            if sugerencia_migracion:
-                break
+        
+        if coincidencia_encontrada:
+            print(f"✅ Ubicación verificada para terminal {request_data.id_terminal}.")
+            actualizar_contadores_suscripcion(id_cuenta)
+            access_token_data = {
+                "sub": terminal_info["correo"],
+                "id_cuenta_addsy": id_cuenta,
+                "id_sucursal": id_sucursal_asignada,
+                "id_empresa_addsy": terminal_info["id_empresa_addsy"]
+            }
+            access_token = security.crear_access_token(data=access_token_data)
+            return models.TerminalVerificationResponse(
+                status="ok",
+                access_token=access_token,
+                id_empresa=terminal_info["id_empresa_addsy"],
+                nombre_empresa=terminal_info["nombre_empresa"],
+                id_sucursal=terminal_info["id_sucursal"],
+                nombre_sucursal=terminal_info["nombre_sucursal"],
+                estado_suscripcion=suscripcion['estado_suscripcion']
+            )
+        else:
+            print(f"⚠️ Conflicto de ubicación para terminal {request_data.id_terminal}.")
+            todas_las_sucursales_dict = get_sucursales_por_cuenta(id_cuenta)
+            sugerencia_migracion = None
+            for otra_sucursal in todas_las_sucursales_dict:
+                if otra_sucursal['id'] == id_sucursal_asignada:
+                    continue
+                ubicaciones_otra_sucursal = get_ubicaciones_autorizadas(otra_sucursal['id'])
+                for ubicacion_otra in ubicaciones_otra_sucursal:
+                    if ubicacion_otra.get('isp') == geo_actual.get('isp') and ubicacion_otra.get('ciudad') == geo_actual.get('ciudad'):
+                        sugerencia_migracion = models.SucursalInfo(**otra_sucursal)
+                        break
+                if sugerencia_migracion:
+                    break
+            return models.TerminalVerificationResponse(
+                status="location_mismatch",
+                sugerencia_migracion=sugerencia_migracion,
+                sucursales_existentes=[models.SucursalInfo(**s) for s in todas_las_sucursales_dict]
+            )
+    else:
+        # --- SI LA SUSCRIPCIÓN ESTÁ VENCIDA O EN OTRO ESTADO NO VÁLIDO ---
+        estado = suscripcion['estado_suscripcion'] if suscripcion else 'desconocido'
+        print(f"🚨 Suscripción no válida para cuenta {id_cuenta}. Estado: {estado}. Generando panel de pago.")
+        
+        cuenta_info = buscar_cuenta_addsy_por_id(id_cuenta)
+        stripe_customer_id = cuenta_info.get("id_cliente_stripe")
 
-        # Devolvemos la respuesta de conflicto, que puede incluir o no la sugerencia de migración.
-        return models.TerminalVerificationResponse(
-            status="location_mismatch",
-            sugerencia_migracion=sugerencia_migracion,
-            sucursales_existentes=[models.SucursalInfo(**s) for s in todas_las_sucursales_dict]
+        if not stripe_customer_id:
+            raise HTTPException(status_code=403, detail="Suscripción vencida y no se encontró ID de cliente para el pago.")
+
+        url_portal_pago = crear_sesion_portal_cliente(
+            stripe_customer_id, 
+            return_url="https://addsy.com.mx/pago-exitoso" # URL a la que Stripe redirige tras el pago
         )
+
+        # Devolvemos una respuesta estructurada en lugar de un error
+        return {
+            "status": "subscription_expired",
+            "message": f"Tu suscripción está {estado}. Por favor, actualiza tu método de pago.",
+            "payment_url": url_portal_pago
+        }
 
 async def check_activation_status(claim_token: str):
     """

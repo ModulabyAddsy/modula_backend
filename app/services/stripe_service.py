@@ -65,3 +65,17 @@ async def crear_sesion_checkout_para_registro(nombre_completo: str, correo: str,
     except Exception as e:
         # Si algo sale mal con Stripe, lanzamos un error que el controlador atrapará.
         raise HTTPException(status_code=500, detail=f"Error al crear la sesión de pago: {e}")
+
+def crear_sesion_portal_cliente(stripe_customer_id: str, return_url: str):
+    """
+    Crea una sesión del Portal del Cliente de Stripe para un cliente existente.
+    """
+    try:
+        portal_session = stripe.billing_portal.Session.create(
+            customer=stripe_customer_id,
+            return_url=return_url,
+        )
+        return portal_session.url
+    except Exception as e:
+        print(f"🔥🔥 ERROR al crear la sesión del portal de Stripe: {e}")
+        return None

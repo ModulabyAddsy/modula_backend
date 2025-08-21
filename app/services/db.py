@@ -618,3 +618,16 @@ def get_latest_active_version():
         return None
     finally:
         if conn: conn.close()
+        
+def buscar_cuenta_addsy_por_id(id_cuenta: int):
+    """Busca una cuenta por su ID primario."""
+    conn = get_connection()
+    if not conn: return None
+    query = "SELECT * FROM cuentas_addsy WHERE id = %s;"
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query, (id_cuenta,))
+            cuenta = cur.fetchone()
+        return cuenta
+    finally:
+        if conn: conn.close()
