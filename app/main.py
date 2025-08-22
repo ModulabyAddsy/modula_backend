@@ -26,7 +26,7 @@ def on_startup():
     print("✅ ¡Backend listo para recibir peticiones!")
 
 # --- Registro de Rutas (Endpoints) ---
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["Autenticación"]) # <-- ESTA LÍNEA FALTABA
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Autenticación"])
 
 # ✅ RUTAS CORREGIDAS PARA EL PREFIJO '/api/v1'
 app.include_router(terminal.router, prefix="/api/v1/terminales", tags=["Terminales"])
@@ -37,7 +37,7 @@ app.include_router(sucursales.router, prefix="/api/v1/sucursales", tags=["Sucurs
 app.include_router(stripe_routes.router, tags=["Stripe Webhooks"])
 
 # El resto de tus rutas se queda igual
-app.include_router(sync.router, prefix="/sync", tags=["Sincronización"])
+app.include_router(sync.router, prefix="/api/v1/sync", tags=["Sincronización"])
 app.include_router(update.router, prefix="/api/v1/update", tags=["Update"])
 
 @app.get("/")
