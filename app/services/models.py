@@ -1,6 +1,6 @@
 # app/services/models.py
 from __future__ import annotations
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, HttpUrl
 from typing import Optional, List
 from datetime import date, datetime
 from uuid import UUID
@@ -191,3 +191,8 @@ class PushRecordsRequest(BaseModel):
     # Usamos Dict[str, Any] para que sea flexible a cualquier estructura de tabla.
     records: List[Dict[str, Any]] = Field(..., 
         description="La lista de registros (filas como diccionarios) a fusionar.")
+    
+class SubscriptionExpiredResponse(BaseModel):
+    status: str = "subscription_expired"
+    message: str
+    payment_url: Optional[HttpUrl] = None

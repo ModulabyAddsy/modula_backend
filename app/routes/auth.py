@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse
 from app.services.models import RegistroCuenta
 from app.controller import auth_controller
 from app.services.models import LoginData, Token
-
+from typing import Union
 
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends
@@ -40,7 +40,8 @@ async def login(data: LoginData, request: Request): # 1. Añadir 'request: Reque
 
 @router.post(
     "/verificar-terminal",
-    response_model=models.TerminalVerificationResponse,
+    # ¡AQUÍ ESTÁ EL CAMBIO! Le decimos que la respuesta puede ser de un tipo O del otro.
+    response_model=Union[models.TerminalVerificationResponse, models.SubscriptionExpiredResponse],
     summary="Verifica una terminal al arranque",
     tags=["Autenticación"]
 )
