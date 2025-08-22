@@ -71,11 +71,13 @@ def crear_sesion_portal_cliente(stripe_customer_id: str, return_url: str):
     Crea una sesión del Portal del Cliente de Stripe para un cliente existente.
     """
     try:
+        print(f"DEBUG: Creando sesión de portal para customer: {stripe_customer_id}")
         portal_session = stripe.billing_portal.Session.create(
             customer=stripe_customer_id,
             return_url=return_url,
         )
+        print(f"DEBUG: Sesión de portal creada exitosamente. URL: {portal_session.url}")
         return portal_session.url
     except Exception as e:
-        print(f"🔥🔥 ERROR al crear la sesión del portal de Stripe: {e}")
+        print(f"🔥🔥 CRITICAL ERROR al crear la sesión del portal de Stripe: {e}")
         return None

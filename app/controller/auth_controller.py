@@ -254,6 +254,7 @@ def verificar_terminal_activa_controller(
         cuenta_info = buscar_cuenta_addsy_por_id(id_cuenta)
         stripe_customer_id = cuenta_info.get("id_cliente_stripe")
 
+        print(f"DEBUG: Intentando crear portal para Stripe Customer ID: {stripe_customer_id}")
         if not stripe_customer_id:
             raise HTTPException(status_code=403, detail="Suscripción vencida y no se encontró ID de cliente para el pago.")
 
