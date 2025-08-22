@@ -5,7 +5,7 @@ from fastapi.responses import HTMLResponse
 # Importaciones de modelos y servicios
 from app.services.models import RegistroCuenta, LoginData, Token
 from app.services import models
-from app.services.stripe_service import crear_sesion_checkout_para_registro, crear_sesion_portal_cliente
+from app.services.stripe_service import crear_sesion_checkout_para_registro, crear_sesion_portal_cliente, get_subscription_status_from_stripe
 from app.services.security import hash_contrasena, verificar_contrasena, crear_access_token
 # --- CAMBIO 1: Importar las nuevas funciones de la nube ---
 from app.services.cloud.setup_empresa_cloud import (
@@ -29,7 +29,8 @@ from app.services.db import (
     get_sucursales_por_cuenta, get_sucursales_por_cuenta,
     buscar_cuenta_por_claim_token,guardar_token_reseteo,
     resetear_contrasena_con_token, get_ubicaciones_autorizadas, 
-    autorizar_nueva_ubicacion, buscar_cuenta_addsy_por_id   
+    autorizar_nueva_ubicacion, buscar_cuenta_addsy_por_id   ,
+    actualizar_suscripcion_tras_pago
 )
 from app.services import security
 from app.services import employee_service
@@ -178,7 +179,6 @@ async def verificar_cuenta(request: Request):
 def verificar_terminal_activa_controller(
     request_data: models.TerminalVerificationRequest, client_ip: str
 ):
-    
     terminal_info = buscar_terminal_activa_por_id(request_data.id_terminal)
     if not terminal_info:
         raise HTTPException(status_code=404, detail="Terminal no registrada o inactiva.")
@@ -186,12 +186,12 @@ def verificar_terminal_activa_controller(
     id_cuenta = terminal_info['id_cuenta_addsy']
     id_sucursal_asignada = terminal_info['id_sucursal']
 
-    suscripcion = actualizar_y_verificar_suscripcion(id_cuenta)
+    suscripcion_local = actualizar_y_verificar_suscripcion(id_cuenta)
     
-    # --- ¡NUEVA LÓGICA MEJORADA PARA MANEJAR ESTADOS DE SUSCRIPCIÓN! ---
-    if suscripcion and suscripcion['estado_suscripcion'] in ['activa', 'prueba_gratis']:
-        # --- SI LA SUSCRIPCIÓN ESTÁ ACTIVA, LA LÓGICA DE UBICACIÓN CONTINÚA NORMALMENTE ---
-        print(f"✅ Suscripción activa para cuenta {id_cuenta}. Procediendo con verificación de ubicación.")
+    if suscripcion_local and suscripcion_local['estado_suscripcion'] in ['activa', 'prueba_gratis']:
+        # --- CASO 1: LA SUSCRIPCIÓN LOCAL ESTÁ ACTIVA ---
+        # El flujo continúa normalmente con la verificación de ubicación.
+        print(f"✅ Suscripción local activa para cuenta {id_cuenta}. Procediendo.")
         
         actualizar_ip_terminal(request_data.id_terminal, client_ip)
         geo_actual = get_ip_geolocation(client_ip)
@@ -225,10 +225,10 @@ def verificar_terminal_activa_controller(
                 nombre_empresa=terminal_info["nombre_empresa"],
                 id_sucursal=terminal_info["id_sucursal"],
                 nombre_sucursal=terminal_info["nombre_sucursal"],
-                estado_suscripcion=suscripcion['estado_suscripcion']
+                estado_suscripcion=suscripcion_local['estado_suscripcion']
             )
         else:
-            print(f"⚠️ Conflicto de ubicación para terminal {request_data.id_terminal}.")
+            print(f"⚠️ Conflicto de ubicación para terminal {request_data.id_terminal}. No está en su sucursal asignada.")
             todas_las_sucursales_dict = get_sucursales_por_cuenta(id_cuenta)
             sugerencia_migracion = None
             for otra_sucursal in todas_las_sucursales_dict:
@@ -247,29 +247,43 @@ def verificar_terminal_activa_controller(
                 sucursales_existentes=[models.SucursalInfo(**s) for s in todas_las_sucursales_dict]
             )
     else:
-        # --- SI LA SUSCRIPCIÓN ESTÁ VENCIDA O EN OTRO ESTADO NO VÁLIDO ---
-        estado = suscripcion['estado_suscripcion'] if suscripcion else 'desconocido'
-        print(f"🚨 Suscripción no válida para cuenta {id_cuenta}. Estado: {estado}. Generando panel de pago.")
+        # --- CASO 2: LA SUSCRIPCIÓN LOCAL ESTÁ VENCIDA (INICIA DOBLE VERIFICACIÓN) ---
+        print(f"⚠️ Suscripción local vencida para cuenta {id_cuenta}. Realizando doble verificación con Stripe...")
         
         cuenta_info = buscar_cuenta_addsy_por_id(id_cuenta)
-        stripe_customer_id = cuenta_info.get("id_cliente_stripe")
+        stripe_sub_id = cuenta_info.get("id_suscripcion_stripe")
+        
+        # 1. Verificamos el estado real en Stripe
+        stripe_status_info = get_subscription_status_from_stripe(stripe_sub_id)
 
-        print(f"DEBUG: Intentando crear portal para Stripe Customer ID: {stripe_customer_id}")
-        if not stripe_customer_id:
-            raise HTTPException(status_code=403, detail="Suscripción vencida y no se encontró ID de cliente para el pago.")
+        # 2. DECISIÓN INTELIGENTE
+        if stripe_status_info and stripe_status_info["status"] == "active":
+            # ¡AUTO-REPARACIÓN! El webhook falló, pero lo corregimos ahora.
+            print(f"✅ Discrepancia encontrada. Stripe dice 'active'. Auto-corrigiendo base de datos local.")
+            actualizar_suscripcion_tras_pago(stripe_sub_id, stripe_status_info["period_end_ts"])
+            # Volvemos a llamar a esta misma función. La próxima vez, entrará en el 'if' de arriba.
+            return verificar_terminal_activa_controller(request_data, client_ip)
+        else:
+            # Es una suscripción REALMENTE vencida. Procedemos a generar el panel de pago.
+            estado_real = stripe_status_info["status"] if stripe_status_info else (suscripcion_local['estado_suscripcion'] if suscripcion_local else 'desconocido')
+            print(f"🚨 Confirmado con Stripe. La suscripción no está activa (Estado: {estado_real}). Generando panel de pago.")
+            
+            stripe_customer_id = cuenta_info.get("id_cliente_stripe")
 
-        url_portal_pago = crear_sesion_portal_cliente(
-            stripe_customer_id, 
-            return_url="https://addsy.com.mx/pago-exitoso" # URL a la que Stripe redirige tras el pago
-        )
+            if not stripe_customer_id:
+                raise HTTPException(status_code=403, detail="Suscripción vencida y no se encontró ID de cliente para el pago.")
 
-        # Devolvemos una respuesta estructurada en lugar de un error
-        return {
-            "status": "subscription_expired",
-            "message": f"Tu suscripción está {estado}. Por favor, actualiza tu método de pago.",
-            "payment_url": url_portal_pago
-        }
+            url_portal_pago = crear_sesion_portal_cliente(
+                stripe_customer_id, 
+                return_url="https://addsy.com.mx/pago-exitoso" # URL a la que Stripe redirige tras el pago
+            )
 
+            return {
+                "status": "subscription_expired",
+                "message": f"Tu suscripción está {estado_real}. Por favor, actualiza tu método de pago.",
+                "payment_url": url_portal_pago
+            }
+            
 async def check_activation_status(claim_token: str):
     """
     Endpoint de polling para que el cliente verifique si la cuenta ya fue activada.

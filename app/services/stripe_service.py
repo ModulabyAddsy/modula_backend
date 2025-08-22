@@ -3,6 +3,7 @@ import stripe
 import os
 from fastapi import HTTPException
 from dotenv import load_dotenv
+from datetime import datetime, timezone
 
 load_dotenv()
 
@@ -80,4 +81,29 @@ def crear_sesion_portal_cliente(stripe_customer_id: str, return_url: str):
         return portal_session.url
     except Exception as e:
         print(f"🔥🔥 CRITICAL ERROR al crear la sesión del portal de Stripe: {e}")
+        return None
+
+def get_subscription_status_from_stripe(stripe_sub_id: str):
+    """
+    Se conecta a Stripe para obtener el estado real y la fecha de vencimiento
+    de una suscripción específica.
+    """
+    if not stripe_sub_id:
+        return None
+    try:
+        # Hacemos la llamada directa a la API de Stripe
+        subscription = stripe.Subscription.retrieve(stripe_sub_id)
+        
+        # Extraemos los datos que nos interesan
+        status = subscription.status  # ej. "active", "past_due", "canceled"
+        period_end_ts = subscription.current_period_end # Timestamp
+        
+        print(f"DEBUG Stripe: Estado real de {stripe_sub_id} es '{status}'.")
+        
+        return {
+            "status": status,
+            "period_end_ts": period_end_ts
+        }
+    except stripe.error.StripeError as e:
+        print(f"🔥🔥 ERROR al verificar suscripción en Stripe: {e}")
         return None
