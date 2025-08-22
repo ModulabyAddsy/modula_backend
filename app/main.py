@@ -27,8 +27,7 @@ def on_startup():
 
 # --- Registro de Rutas (Endpoints) ---
 # Cada módulo de rutas se registra una sola vez.
-app.include_router(auth.router, prefix="/auth", tags=["Autenticación"])
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Autenticación"])
 app.include_router(terminal.router, prefix="/terminales", tags=["Terminales"])
 app.include_router(suscripcion_routes.router, prefix="/suscripciones", tags=["Suscripciones"])
 app.include_router(sucursales.router, prefix="/sucursales", tags=["Sucursales"])
