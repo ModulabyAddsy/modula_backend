@@ -6,7 +6,6 @@ from app.services.security import get_current_active_user
 from typing import List
 
 router = APIRouter(
-    prefix="/sucursales",
     tags=["Sucursales"]
 )
 
