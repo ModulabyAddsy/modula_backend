@@ -26,9 +26,7 @@ def on_startup():
     print("✅ ¡Backend listo para recibir peticiones!")
 
 # --- Registro de Rutas (Endpoints) ---
-# Cada módulo de rutas se registra una sola vez.
-# Cada módulo de rutas se registra una sola vez.
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["Autenticación"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Autenticación"]) # <-- ESTA LÍNEA FALTABA
 
 # ✅ RUTAS CORREGIDAS PARA EL PREFIJO '/api/v1'
 app.include_router(terminal.router, prefix="/api/v1/terminales", tags=["Terminales"])
