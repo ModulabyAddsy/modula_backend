@@ -76,7 +76,9 @@ async def login_para_access_token(form_data: LoginData, client_ip: str):
     """
     Autentica al usuario y devuelve un token. Su única responsabilidad es la identidad.
     """
-    cuenta = buscar_cuenta_addsy_por_correo(form_data.correo)
+    correo_lower = form_data.correo.lower()
+    
+    cuenta = buscar_cuenta_addsy_por_correo(correo_lower)
     if not cuenta or not verificar_contrasena(form_data.contrasena, cuenta["contrasena_hash"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
