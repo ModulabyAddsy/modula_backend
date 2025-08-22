@@ -27,13 +27,18 @@ def on_startup():
 
 # --- Registro de Rutas (Endpoints) ---
 # Cada módulo de rutas se registra una sola vez.
+# Cada módulo de rutas se registra una sola vez.
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Autenticación"])
-app.include_router(terminal.router, prefix="/terminales", tags=["Terminales"])
-app.include_router(suscripcion_routes.router, prefix="/suscripciones", tags=["Suscripciones"])
-app.include_router(sucursales.router, prefix="/sucursales", tags=["Sucursales"])
+
+# ✅ RUTAS CORREGIDAS PARA EL PREFIJO '/api/v1'
+app.include_router(terminal.router, prefix="/api/v1/terminales", tags=["Terminales"])
+app.include_router(suscripcion_routes.router, prefix="/api/v1/suscripciones", tags=["Suscripciones"])
+app.include_router(sucursales.router, prefix="/api/v1/sucursales", tags=["Sucursales"])
+
+# Las webhooks de Stripe se quedan sin prefijo de API
 app.include_router(stripe_routes.router, tags=["Stripe Webhooks"])
 
-# ✅ NUEVO: Registro ÚNICO y CORRECTO para el enrutador de sincronización
+# El resto de tus rutas se queda igual
 app.include_router(sync.router, prefix="/sync", tags=["Sincronización"])
 app.include_router(update.router, prefix="/api/v1/update", tags=["Update"])
 
