@@ -22,7 +22,7 @@ def enviar_correo_verificacion(destinatario, nombre_usuario, token, id_terminal,
     """
 
     # La URL correcta debe incluir el prefijo /auth/
-    enlace = f"https://modula-backend.onrender.com/auth/verificar-cuenta?token={token}&id_terminal={id_terminal}&session_id={id_stripe_session}"
+    enlace = f"https://modula-backend.onrender.com/api/v1/auth/verificar-cuenta?token={token}&id_terminal={id_terminal}&session_id={id_stripe_session}"
 
     asunto = "Verifica tu cuenta Addsy 🚀"
     cuerpo_html = f"""
@@ -112,7 +112,7 @@ def enviar_correo_reseteo(destinatario: str, nombre_usuario: str, token: str):
         return
 
     # --- Creación del Mensaje ---
-    enlace = f"https://modula-backend.onrender.com/auth/pagina-reseteo?token={token}"
+    enlace = f"https://modula-backend.onrender.com/api/v1/auth/pagina-reseteo?token={token}"
     mensaje = MIMEMultipart("alternative")
     mensaje["Subject"] = "Restablece tu contraseña de Modula"
     mensaje["From"] = f"Addsy Soporte <{EMAIL_USER}>"
