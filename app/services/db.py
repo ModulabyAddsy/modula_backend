@@ -113,8 +113,8 @@ def verificar_token_y_activar_cuenta(token: str):
 
 def activar_suscripcion_y_terminal(id_cuenta: int, id_empresa_addsy: str, id_terminal_uuid: str, id_stripe: str):
     """
-    Activa la suscripción, crea la primera sucursal y terminal, y devuelve
-    un diccionario con los resultados.
+    Activa la suscripción, crea la primera sucursal y crea o asigna la primera terminal.
+    Devuelve un diccionario con los resultados.
     """
     conn = get_connection()
     if not conn: return {'exito': False}
@@ -137,7 +137,6 @@ def activar_suscripcion_y_terminal(id_cuenta: int, id_empresa_addsy: str, id_ter
             )
             sucursal_id = cur.fetchone()['id']
 
-            # ✅ BLOQUE DE CÓDIGO RESTAURADO
             # 3. Construir y guardar la ruta de la nube
             ruta_cloud_sucursal = f"{id_empresa_addsy}/suc_{sucursal_id}/"
             print(f"🔗 Vinculando sucursal ID {sucursal_id} con la ruta: {ruta_cloud_sucursal}")
@@ -146,16 +145,33 @@ def activar_suscripcion_y_terminal(id_cuenta: int, id_empresa_addsy: str, id_ter
                 (ruta_cloud_sucursal, sucursal_id)
             )
 
-            # 4. Crear la primera terminal
-            cur.execute(
-                "INSERT INTO modula_terminales (id_terminal, id_cuenta_addsy, id_sucursal, nombre_terminal, activa) VALUES (%s, %s, %s, %s, true);", 
-                (id_terminal_uuid, id_cuenta, sucursal_id, 'Terminal Principal')
-            )
+            # --- ¡NUEVA LÓGICA INTELIGENTE PARA LA TERMINAL! ---
+            # 4. Comprobar si la terminal ya existe
+            cur.execute("SELECT * FROM modula_terminales WHERE id_terminal = %s;", (id_terminal_uuid,))
+            terminal_existente = cur.fetchone()
+
+            if terminal_existente:
+                # Si existe, la actualizamos para asignarla a la nueva cuenta y sucursal
+                print(f"Terminal {id_terminal_uuid} ya existe. Asignando a nueva cuenta y sucursal.")
+                cur.execute(
+                    """
+                    UPDATE modula_terminales 
+                    SET id_cuenta_addsy = %s, id_sucursal = %s, nombre_terminal = %s, activa = true
+                    WHERE id_terminal = %s;
+                    """,
+                    (id_cuenta, sucursal_id, 'Terminal Principal', id_terminal_uuid)
+                )
+            else:
+                # Si no existe, la creamos como antes
+                print(f"Terminal {id_terminal_uuid} no existe. Creando nuevo registro.")
+                cur.execute(
+                    "INSERT INTO modula_terminales (id_terminal, id_cuenta_addsy, id_sucursal, nombre_terminal, activa) VALUES (%s, %s, %s, %s, true);", 
+                    (id_terminal_uuid, id_cuenta, sucursal_id, 'Terminal Principal')
+                )
             
             conn.commit()
             print(f"✅ Suscripción, sucursal y terminal activadas para cuenta ID {id_cuenta}.")
             
-            # Ahora la función puede devolver el diccionario completo sin errores
             return {
                 'exito': True, 
                 'ruta_cloud': ruta_cloud_sucursal, 
