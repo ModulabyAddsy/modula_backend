@@ -71,6 +71,10 @@ async def recibir_registros_locales_logic(push_request: PushRecordsRequest, curr
         
         # 4. Fusionar los registros recibidos
         for record in push_request.records:
+            # ✅ CORRECCIÓN CLAVE: Convertir el UUID a string ANTES de ejecutar el SQL.
+            if 'uuid' in record and record['uuid'] is not None:
+                record['uuid'] = str(record['uuid'])
+
             columns = ", ".join(record.keys())
             placeholders = ", ".join(["?"] * len(record))
             update_assignments = ", ".join([f"{key} = excluded.{key}" for key in record.keys() if key != 'uuid'])
