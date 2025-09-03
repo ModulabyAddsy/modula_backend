@@ -5,9 +5,9 @@ from fastapi.responses import StreamingResponse, JSONResponse
 import io
 import sqlite3
 import tempfile
+import os
 
 # --- Importaciones de Lógica y Servicios ---
-# (Nota: Ya no importamos APIRouter, Depends, etc. aquí)
 from app.services.cloud.setup_empresa_cloud import (
     listar_archivos_con_metadata,
     descargar_archivo_de_r2,
@@ -52,17 +52,24 @@ async def recibir_registros_locales_logic(push_request: PushRecordsRequest, curr
     id_empresa = current_user['id_empresa_addsy']
     key_path = push_request.db_relative_path
     print(f"🔄 Recibiendo {len(push_request.records)} registros para fusionar en '{key_path}'")
-
+    
+    # 1. Descargar la DB de la nube
     db_bytes = descargar_archivo_de_r2(key_path)
     if not db_bytes:
         raise HTTPException(status_code=404, detail=f"La base de datos '{key_path}' no se encontró en la nube.")
 
-    with tempfile.NamedTemporaryFile(suffix=".sqlite") as tmp_db:
-        # ... (El resto de la lógica de fusión de datos se mantiene exactamente igual) ...
-        tmp_db.write(db_bytes)
-        tmp_db.seek(0)
-        conn = sqlite3.connect(tmp_db.name)
+    # 2. Crear un archivo temporal para trabajar con SQLite
+    temp_file_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tmp_db:
+            temp_file_path = tmp_db.name
+            tmp_db.write(db_bytes)
+
+        # 3. Conectarse a la base de datos temporal
+        conn = sqlite3.connect(temp_file_path)
         cursor = conn.cursor()
+        
+        # 4. Fusionar los registros recibidos
         for record in push_request.records:
             columns = ", ".join(record.keys())
             placeholders = ", ".join(["?"] * len(record))
@@ -73,12 +80,22 @@ async def recibir_registros_locales_logic(push_request: PushRecordsRequest, curr
             except sqlite3.Error as e:
                 conn.close()
                 raise HTTPException(status_code=500, detail=f"Error de SQL al fusionar: {e}")
+        
         conn.commit()
         conn.close()
-        tmp_db.seek(0)
-        updated_db_bytes = tmp_db.read()
+
+        # 5. Leer el contenido de la DB fusionada desde el archivo temporal
+        with open(temp_file_path, "rb") as f:
+            updated_db_bytes = f.read()
+
+        # 6. Subir la DB fusionada de vuelta a R2
         if not subir_archivo_a_r2(key_path, updated_db_bytes):
             raise HTTPException(status_code=500, detail="Error al resubir la base de datos fusionada a R2.")
+
+    finally:
+        # 7. Eliminar el archivo temporal, incluso si hay un error
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
 
     return JSONResponse(content={"status": "push_success", "merged_records": len(push_request.records)})
 
