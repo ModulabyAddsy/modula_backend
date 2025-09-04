@@ -181,14 +181,19 @@ class PushRecordsRequest(BaseModel):
     pendientes de sincronizar a la nube.
     """
     db_relative_path: str = Field(..., 
-        example="suc_25/ventas.sqlite", 
+        example="suc_25/egresos.sqlite", 
         description="Ruta relativa del archivo de BD desde la carpeta de la empresa.")
     
     table_name: str = Field(..., 
-        example="ventas", 
+        example="egresos", 
         description="Nombre de la tabla a la que pertenecen los registros.")
     
-    # Usamos Dict[str, Any] para que sea flexible a cualquier estructura de tabla.
+    # --- 👇 CAMBIO CLAVE ---
+    # Añadimos este campo para que el cliente nos diga cuál es la columna única.
+    primary_key_column: str = Field(...,
+        example="id",
+        description="El nombre de la columna de clave primaria para la cláusula ON CONFLICT.")
+
     records: List[Dict[str, Any]] = Field(..., 
         description="La lista de registros (filas como diccionarios) a fusionar.")
     

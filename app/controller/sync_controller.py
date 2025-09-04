@@ -3,6 +3,7 @@
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 import io
+import logging
 import sqlite3
 import tempfile
 import os
@@ -50,54 +51,61 @@ async def inicializar_sincronizacion_logic(current_user: dict):
 
 async def recibir_registros_locales_logic(push_request: PushRecordsRequest, current_user: dict):
     id_empresa = current_user['id_empresa_addsy']
-    key_path = push_request.db_relative_path
-    print(f"🔄 Recibiendo {len(push_request.records)} registros para fusionar en '{key_path}'")
+    key_path = f"{id_empresa}/{push_request.db_relative_path}" # Construimos la ruta completa aquí
     
-    # 1. Descargar la DB de la nube
+    # Mensaje de log mejorado
+    logging.info(f"🔄 Recibiendo {len(push_request.records)} registros para tabla '{push_request.table_name}' usando PK '{push_request.primary_key_column}'")
+    
     db_bytes = descargar_archivo_de_r2(key_path)
     if not db_bytes:
         raise HTTPException(status_code=404, detail=f"La base de datos '{key_path}' no se encontró en la nube.")
 
-    # 2. Crear un archivo temporal para trabajar con SQLite
     temp_file_path = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tmp_db:
             temp_file_path = tmp_db.name
             tmp_db.write(db_bytes)
 
-        # 3. Conectarse a la base de datos temporal
         conn = sqlite3.connect(temp_file_path)
         cursor = conn.cursor()
         
-        # 4. Fusionar los registros recibidos
         for record in push_request.records:
-            # ✅ CORRECCIÓN CLAVE: Convertir el UUID a string ANTES de ejecutar el SQL.
+            # Tu conversión de UUID es buena, la mantenemos por si se usa en otras tablas
             if 'uuid' in record and record['uuid'] is not None:
                 record['uuid'] = str(record['uuid'])
 
             columns = ", ".join(record.keys())
             placeholders = ", ".join(["?"] * len(record))
-            update_assignments = ", ".join([f"{key} = excluded.{key}" for key in record.keys() if key != 'uuid'])
-            sql = f"INSERT INTO {push_request.table_name} ({columns}) VALUES ({placeholders}) ON CONFLICT(uuid) DO UPDATE SET {update_assignments};"
+            
+            # --- 👇 LÓGICA DE ACTUALIZACIÓN MEJORADA ---
+            # Obtenemos la clave primaria del request
+            pk_column = push_request.primary_key_column
+            
+            # Construimos la parte de actualización, excluyendo la clave primaria
+            update_assignments = ", ".join([f"{key} = excluded.{key}" for key in record.keys() if key != pk_column])
+            
+            # Construimos la consulta SQL dinámica y robusta
+            sql = (f"INSERT INTO {push_request.table_name} ({columns}) VALUES ({placeholders}) "
+                   f"ON CONFLICT({pk_column}) DO UPDATE SET {update_assignments};")
+            
             try:
                 cursor.execute(sql, list(record.values()))
             except sqlite3.Error as e:
+                logging.error(f"Error de SQL al fusionar registro en tabla '{push_request.table_name}': {e}. SQL: {sql}")
                 conn.close()
-                raise HTTPException(status_code=500, detail=f"Error de SQL al fusionar: {e}")
+                # Devolvemos el error específico para facilitar la depuración en el cliente
+                raise HTTPException(status_code=409, detail=f"Conflicto de SQL: {e}")
         
         conn.commit()
         conn.close()
 
-        # 5. Leer el contenido de la DB fusionada desde el archivo temporal
         with open(temp_file_path, "rb") as f:
             updated_db_bytes = f.read()
 
-        # 6. Subir la DB fusionada de vuelta a R2
         if not subir_archivo_a_r2(key_path, updated_db_bytes):
             raise HTTPException(status_code=500, detail="Error al resubir la base de datos fusionada a R2.")
 
     finally:
-        # 7. Eliminar el archivo temporal, incluso si hay un error
         if temp_file_path and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
 
