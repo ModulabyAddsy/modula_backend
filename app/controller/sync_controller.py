@@ -54,7 +54,7 @@ async def recibir_registros_locales_logic(push_request: PushRecordsRequest, curr
     
     # --- ▼▼▼ ESTA ES LA LÍNEA CORREGIDA ▼▼▼ ---
     # Construimos la ruta COMPLETA una sola vez, uniendo el ID de la empresa con la ruta relativa que nos llega.
-    key_path = f"{id_empresa}/{push_request.db_relative_path}"
+    key_path = f"{push_request.db_relative_path}"
     # --- ▲▲▲ FIN DE LA CORRECCIÓN ▲▲▲ ---
     
     logging.info(f"🔄 Recibiendo {len(push_request.records)} registros para fusionar en '{key_path}'")
