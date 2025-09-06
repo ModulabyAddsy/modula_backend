@@ -1,0 +1,143 @@
+[33m09b4b2a[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Correccion en el refresh de autologin y nombre en database
+[33m7c7dafa[m Adaptacion para conservar las credenciales del primer usuario en la base de datos
+[33md795c74[m Correccion de lad id y uuid
+[33mb56be7d[m Correccion de la ruta duplicada
+[33me507852[m correccion de la ruta en la descarga
+[33m1617016[m Formato de ruta en las sincronizaciones de base de datos
+[33mead01c5[m convertir el UUID de las databases en texto
+[33mb6caf74[m Reparacion de recibir_registros_locales_logic
+[33m4714511[m Correccion en la base de datos de las terminales en la nube
+[33ma2e0724[m Restructuracion de los correos
+[33m0ee7f4e[m quitar prefijo duplicado
+[33m1b43583[m Restructuracion del main.py
+[33mdf19791[m restructuracion
+[33ma43185d[m Main.py
+[33mdf4f3f1[m restructuracion del main
+[33m2c834c4[m correo_lower
+[33m8397661[m Correccion de /api/v1/auth
+[33ma1e880e[m Adaptacion de la verificacion del estatus de la cuenta
+[33mc0514d3[m nuevo endpoint de verificado de terminal
+[33m2fe2eb9[m Logs para problema en stripe
+[33mee902fb[m Integracion de la cuenta de stripe
+[33m009e245[m Implementacion robusta de la suscripcion
+[33m51db393[m endpoints de la funcion de actualizacion
+[33mbde1fc0[m key_path = push_request.db_relative_path
+[33ma8344d4[m Modificacion a verificar terminal
+[33mccb8f57[m Revert to deploy 648e68f (Correccion e la SECRET KEY EN SECURITY)
+[33mc5d0911[m Regresar al esquema anterior de verificar terminal
+[33mf616b1a[m Modificacion async
+[33m3e7f22a[m Error 401
+[33m648e68f[m Correccion e la SECRET KEY EN SECURITY
+[33m5870e4c[m Correccion del security.py
+[33m5646638[m Correccion de errores en la sincronizacion 2.0
+[33mc2912a5[m Modificacion del main.py
+[33mfd7c412[m Se elimino RecordData(BaseModel)
+[33m44a6b40[m Sincronizacion de datos 2.0
+[33ma19e30a[m Actualizacion de setupempresas
+[33mfd4f638[m Solucion de la mayuscula
+[33m816c500[m Añadir Response
+[33m8a24929[m Eliminacion del response
+[33m25885ff[m Header correctamente
+[33m1bf6dc4[m Verificacion de los conenidos has en las bases de datos
+[33mf6c3f1d[m PlanSincronizacionResponse
+[33m494052d[m Sincronizacion de datos robusta
+[33mad167a3[m Endpoints de sincronizacion y descarga
+[33m9663542[m Integrar la funcion de sicronizacion con la nube
+[33m1efb45c[m ubicaciones mas precisas
+[33m1dd4a11[m Correccion de las ips al crear cuenta
+[33m8acb1fa[m Funciones de geolocalizacion mas precisas
+[33m622b62f[m Verificacion e implementacion de la ID MAC para terminales
+[33mff1faf9[m Mejorar la pagina de recuperacion de contraseña
+[33m7875083[m Enviar el correo de recuperacion
+[33m49f2459[m Restablecer contraseña
+[33m424f0d8[m Enviar correo de credenciales
+[33m2f97fc0[m Inicio automatico al hacer la cuenta con giardado de la id terminal
+[33m51e1ae1[m Cambiar lectura modo texto a binario en sql usuarios
+[33m6f18a86[m Automatizacion del primer usuario
+[33mf36343d[m Correccion de errores en terminal_controller.py
+[33m164235f[m actualizará correctamente los cobros en Stripe y registrará de forma segura la dirección IP de cada nueva terminal
+[33mb0d8e85[m Separacion de prioridades en el login
+[33m5e12ce6[m Actualizacion del status de stripe
+[33m4304ae2[m Restructuracion del script subscription_sync
+[33m1052db1[m Redundancia entre id de suscripciones
+[33macbbe4a[m Convertir las ip a texto para ser comparadas
+[33m844d49d[m Borrar espacios no necesarios en las ips
+[33m7a72ab7[m Borrar espacios no necesarios en las ips
+[33m673decf[m Crear terminales
+[33m5a2794c[m Restructuracion del modelo de negocio con Stripe
+[33mda87253[m actualizar la base de datos con tu nueva IP real
+[33me4ff086[m TypeError: Object of type date is not JSON serializable
+[33m2b8462b[m error ValidationError: 6 validation errors for TerminalVerificationResponse
+[33m2b6c575[m Correccion a la ip en db
+[33m9ef8488[m Correccion para no cambiar la ip antes de tiempo v2
+[33mfe5fcff[m Correccion para no cambiar la ip antes de tiempo
+[33m11b1f73[m Aplicativo para crear sucursales
+[33m78d9cd0[m Correccion del error en el modelo de las terminales verificadas
+[33mc3a640a[m Resolver errores de jonson
+[33mcff149b[m correccion en el modelo del token
+[33m4adccde[m Correccion para pasar el id_terminal
+[33md419722[m Correccion para pasar el id_terminal
+[33md2b6b53[m Correccion para que el login acepte la direccion ip
+[33m3e641a5[m Correccion a los detalles de la nuebe
+[33m8288369[m Implementacion robusta de la nube con R2
+[33m9f89924[m automatizacion de las data bases en render
+[33md94c78c[m automatizacion de las data bases en render
+[33m196defd[m access_token corregido
+[33m175c441[m Correccion de importaciones para la busqueda de terminales
+[33m4b1bcd4[m Implementacion del endpoint para buscar por id_terminal
+[33m2931c6b[m correccion en el modelo de las bases de datos de la nube
+[33md051b55[m Ultimo retoque a la creacion de las carpetas en la nube
+[33m6da773f[m Copiar el _modelo de las bases de datos en la nueb
+[33mc84776d[m Correccion de las exportaciones a la db sucursales
+[33m29c3f5f[m correccion en los tokens
+[33m45e9c7b[m correccion en los tokens
+[33m5efa3bb[m Correccion en el mail.py
+[33mb40cd5d[m correccion en el mail
+[33m0d38ffd[m Correccion de services/db.py
+[33m4cfb1f0[m Correccion de services/db.py
+[33m3896881[m Creacion de los endpoints terminal y suscripcion
+[33m2fe2503[m Nueva refactorizacion
+[33m7bbdcf7[m Refactorizacion
+[33m8163898[m error en services.db
+[33mf43926c[m Migracion a la version modular de cuentas addsy
+[33m2e19bac[m Verificamos versiones de Python
+[33mc6119be[m Verificamos versiones de Python
+[33m4a5b6c6[m Verificamos versiones de Python
+[33m944fa24[m Fix: downgrade Python to 3.11 for psycopg2 compatibility
+[33mb8cd4d3[m Verificamos versiones de Python
+[33m2015dc4[m Verificamos versiones de python
+[33m78b504d[m Verificamos versiones de python
+[33mbd033b1[m Verificamos versiones de python
+[33m34c5820[m Verificamos versiones de python
+[33m21b740e[m Verificamos versiones de python
+[33m13f3fcc[m Corrección del backend ante la migración de db
+[33m8bbe845[m Corrección del backend ante la migración de db
+[33m34fd115[m Corrección del backend ante la migración de db
+[33md8ea798[m Corrección del backend ante la migración de db
+[33mc4d41a1[m Corrección del backend ante la migración de db
+[33mc09fc55[m Corrección del backend ante la migración de db
+[33m7ef324f[m Corrección del backend ante la migración de db
+[33mfe40181[m Corrección del backend ante la migración de db
+[33mca3871e[m Corrección del backend ante la migración de db
+[33ma548a26[m Corrección del backend ante la migración de db
+[33mdfe4e58[m Corrección del backend ante la migración de db
+[33m5129cd6[m Corrección del backend ante la migración de db
+[33m5e3f0be[m Corrección del backend ante la migración de db
+[33m75c1d67[m Corrección del backend ante la migración de db
+[33m9aca1c1[m Corrección del backend ante la migración de db
+[33mdcc8dbb[m Corrección del backend ante la migración de db
+[33mae62104[m Corrección de auth_controller
+[33mca259a6[m Corrección de auth_controller
+[33m816042a[m Corrección del main.py versión Gemini
+[33m427a614[m Corrección del main.py versión Gemini
+[33m34cb582[m Corrección del main.py versión Gemini
+[33mabf9da8[m Corrección del main.py versión Gemini
+[33m74c8ca3[m Corrección del main.py versión Gemini
+[33m7b5ce20[m Migración de Gemini al proyecto
+[33m648c8eb[m Feat: Se corrige los endpoint de Stripe
+[33mfb4eebc[m Feat: Se corrige los endpoint de Stripe
+[33m0a1b3da[m Feat: Agregado endpoint stripe_utils al main
+[33mfb296a8[m ➕ Add: stripe agregado a requirements.txt para instalar en Render
+[33m9defaf3[m 🐛 Fix: Renombrado stripe.py para evitar conflicto con librería oficial
+[33m3b18a93[m 🐛 Fix: Renombrado stripe.py para evitar conflicto con librería oficial
+[33mc9ff4b7[m ✅ Fix: Eliminar duplic

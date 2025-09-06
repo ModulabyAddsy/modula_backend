@@ -7,7 +7,7 @@ from app.services.models import RegistroCuenta, LoginData, Token
 from app.services import models
 from app.services.stripe_service import crear_sesion_checkout_para_registro, crear_sesion_portal_cliente, get_subscription_status_from_stripe
 from app.services.security import hash_contrasena, verificar_contrasena, crear_access_token
-from app.services.employee_service import anadir_primer_administrador_general
+from app.services.employee_service import anadir_primer_administrador_general,obtener_info_empleado
 # --- CAMBIO 1: Importar las nuevas funciones de la nube ---
 from app.services.cloud.setup_empresa_cloud import (
     crear_estructura_base_empresa, 
@@ -301,7 +301,7 @@ async def check_activation_status(claim_token: str):
     if cuenta['estatus_cuenta'] != 'verificada':
         return {"status": "pending"}
 
-    # ¡La cuenta está verificada! Procedemos a generar el token de auto-login
+    # La cuenta está verificada, procederemos a generar el token de auto-login
     try:
         # 1. Encontrar la primera terminal de esta cuenta
         terminales = get_terminales_por_cuenta(cuenta['id'])
@@ -309,24 +309,25 @@ async def check_activation_status(claim_token: str):
             raise Exception("No se encontró la terminal principal de la cuenta.")
         id_terminal = terminales[0]['id_terminal']
 
-        # 2. Descargar la DB de usuarios, no la de empleados
+        # 2. Descargar la base de datos de usuarios desde R2
         ruta_db_usuarios = f"{cuenta['id_empresa_addsy']}/databases_generales/usuarios.sqlite"
         db_bytes = descargar_archivo_db(ruta_db_usuarios)
         if not db_bytes:
             raise Exception("No se pudo descargar la DB de usuarios.")
         
-        # 3. Obtener info del primer usuario para crear el token
-        # Ahora el nombre de usuario es el ID de la cuenta, y la tabla es 'usuarios'
-        username_usuario = str(cuenta['id']) 
-        usuario_info = employee_service.obtener_info_empleado(db_bytes, username_usuario)
+        # 3. Obtener información del primer usuario para crear el token
+        # El nombre de usuario es ahora el ID de la cuenta, como se configuró en la verificación
+        username_usuario = str(cuenta['id'])
+        usuario_info = obtener_info_empleado(db_bytes, username_usuario)
         
         if not usuario_info:
             raise Exception("No se encontró al usuario administrador inicial.")
 
         # 4. Crear un token de acceso para ese usuario
+        # Los datos del token deben coincidir con la nueva tabla
         token_data = {
-            "sub": usuario_info['nombre_usuario'], 
-            "id_usuario": usuario_info['id'], # Usamos 'id' en lugar de 'id_empleado'
+            "sub": usuario_info['nombre_usuario'],
+            "id_usuario": usuario_info['id'], 
             "rol": usuario_info['rol'], 
             "id_cuenta_addsy": cuenta['id']
         }
