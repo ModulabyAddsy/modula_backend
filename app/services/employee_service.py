@@ -114,15 +114,15 @@ def anadir_primer_administrador_general(
         bytes | None: El contenido de la base de datos actualizado, o None si hubo un error.
     """
     
-    temp_db_path = None
+    temp_path_db = None
     try:
         # 1. Escribir los bytes descargados a un archivo temporal para poder conectarnos
         with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tmp_db:
-            temp_db_path = tmp_db.name
+            temp_path_db = tmp_db.name
             tmp_db.write(db_bytes)
         
         # 2. Conectar al archivo temporal y preparar los datos para la inserción
-        with sqlite3.connect(temp_db_path) as conn:
+        with sqlite3.connect(temp_path_db) as conn:
             cursor = conn.cursor()
             
             # Generar UUID y hashear la contraseña
@@ -167,7 +167,7 @@ def anadir_primer_administrador_general(
             conn.commit()
             
         # 4. Leer los bytes del archivo modificado para devolverlos
-        with open(temp_db_path, "rb") as f:
+        with open(temp_path_db, "rb") as f:
             db_bytes_modificado = f.read()
         
         return db_bytes_modificado
@@ -177,6 +177,6 @@ def anadir_primer_administrador_general(
         return None
     finally:
         # 5. Asegurarse de borrar el archivo temporal
-        if temp_db_path and os.path.exists(temp_db_path):
-            os.remove(temp_db_path)
+        if temp_path_db and os.path.exists(temp_path_db):
+            os.remove(temp_path_db)
 
