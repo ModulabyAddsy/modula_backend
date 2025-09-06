@@ -97,7 +97,8 @@ def anadir_primer_administrador_general(
     db_bytes: bytes,
     datos_propietario: dict,
     username_empleado: str,
-    contrasena_temporal: str
+    contrasena_temporal: str,
+    nombre_completo: str
 ) -> bytes | None:
     """
     Agrega el primer usuario (administrador) a la base de datos de 'usuarios.sqlite'.
@@ -147,20 +148,18 @@ def anadir_primer_administrador_general(
             data = (
                 uuid_empleado, 
                 last_modified_timestamp,
-                1, # needs_sync: 1 (siempre necesita sincronizarse la primera vez)
-                username_empleado,
-                # El 'numero_empleado' y el 'username_empleado' probablemente sean el mismo
+                1, 
+                nombre_completo, # <-- Usamos el nuevo parámetro para 'nombre_usuario'
                 int(username_empleado),
                 contrasena_hash,
-                # La fecha de ingreso es hoy
                 datetime.utcnow().strftime('%Y-%m-%d'),
                 datos_propietario.get('fecha_nacimiento'),
                 datos_propietario.get('correo'),
                 datos_propietario.get('telefono'),
-                1, # activo: 1 (True)
-                'Administrador', # rol: 'Administrador' por ser el primer usuario
-                1, # cuenta_master: 1 (True)
-                1 # cambio_contrasena_obligatorio: 1 (True)
+                1, 
+                'Administrador',
+                1,
+                1
             )
             
             # 3. Ejecutar la inserción y guardar los cambios

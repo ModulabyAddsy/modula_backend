@@ -161,7 +161,7 @@ async def verificar_cuenta(request: Request):
         # D. Añadir el primer admin al archivo descargado
         # Usamos la nueva función del servicio
         db_bytes_modificado = anadir_primer_administrador_general(
-            db_bytes_original, datos_propietario, username_empleado, contrasena_temporal
+            db_bytes_original, datos_propietario, username_empleado, contrasena_temporal,datos_propietario['nombre_completo']
         )
         if not db_bytes_modificado: raise Exception("No se pudo insertar el admin en el archivo DB.")
         
@@ -309,21 +309,26 @@ async def check_activation_status(claim_token: str):
             raise Exception("No se encontró la terminal principal de la cuenta.")
         id_terminal = terminales[0]['id_terminal']
 
-        # 2. Descargar la DB de empleados
+        # 2. Descargar la DB de usuarios, no la de empleados
         ruta_db_usuarios = f"{cuenta['id_empresa_addsy']}/databases_generales/usuarios.sqlite"
         db_bytes = descargar_archivo_db(ruta_db_usuarios)
         if not db_bytes:
-            raise Exception("No se pudo descargar la DB de empleados.")
+            raise Exception("No se pudo descargar la DB de usuarios.")
         
-        # 3. Obtener info del primer empleado para crear el token
-        empleado_info = employee_service.obtener_info_empleado(db_bytes, "11001")
-        if not empleado_info:
-            raise Exception("No se encontró al empleado administrador inicial.")
+        # 3. Obtener info del primer usuario para crear el token
+        # Ahora el nombre de usuario es el ID de la cuenta, y la tabla es 'usuarios'
+        username_usuario = str(cuenta['id']) 
+        usuario_info = employee_service.obtener_info_empleado(db_bytes, username_usuario)
+        
+        if not usuario_info:
+            raise Exception("No se encontró al usuario administrador inicial.")
 
-        # 4. Crear un token de acceso para ese empleado
+        # 4. Crear un token de acceso para ese usuario
         token_data = {
-            "sub": empleado_info['nombre_usuario'], "id_empleado": empleado_info['id_empleado'],
-            "puesto": empleado_info['puesto'], "id_cuenta_addsy": cuenta['id']
+            "sub": usuario_info['nombre_usuario'], 
+            "id_usuario": usuario_info['id'], # Usamos 'id' en lugar de 'id_empleado'
+            "rol": usuario_info['rol'], 
+            "id_cuenta_addsy": cuenta['id']
         }
         access_token = crear_access_token(data=token_data)
 
@@ -331,7 +336,7 @@ async def check_activation_status(claim_token: str):
             "status": "complete",
             "id_terminal": id_terminal,
             "access_token": access_token,
-            "empleado_info": empleado_info
+            "usuario_info": usuario_info
         }
     except Exception as e:
         print(f"🔥🔥 ERROR durante el check_activation_status para claim {claim_token}: {e}")
