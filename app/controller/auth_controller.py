@@ -7,6 +7,7 @@ from app.services.models import RegistroCuenta, LoginData, Token
 from app.services import models
 from app.services.stripe_service import crear_sesion_checkout_para_registro, crear_sesion_portal_cliente, get_subscription_status_from_stripe
 from app.services.security import hash_contrasena, verificar_contrasena, crear_access_token
+from app.services.employee_service import anadir_primer_administrador_general
 # --- CAMBIO 1: Importar las nuevas funciones de la nube ---
 from app.services.cloud.setup_empresa_cloud import (
     crear_estructura_base_empresa, 
@@ -153,11 +154,13 @@ async def verificar_cuenta(request: Request):
             **cuenta_activada, 
             'id_primera_sucursal': resultado_activacion['id_sucursal']
         }
-        username_empleado = "11001" 
+        # Aseguramos que el username del primer admin sea el numero de cuenta
+        username_empleado = str(cuenta_activada['id'])
         contrasena_temporal = generar_contrasena_temporal()
         
         # D. Añadir el primer admin al archivo descargado
-        db_bytes_modificado = anadir_primer_administrador(
+        # Usamos la nueva función del servicio
+        db_bytes_modificado = anadir_primer_administrador_general(
             db_bytes_original, datos_propietario, username_empleado, contrasena_temporal
         )
         if not db_bytes_modificado: raise Exception("No se pudo insertar el admin en el archivo DB.")
@@ -172,6 +175,7 @@ async def verificar_cuenta(request: Request):
             username_empleado=username_empleado, contrasena_temporal=contrasena_temporal
         )
     except Exception as e:
+        # Se captura cualquier error en el proceso y se notifica al usuario sin romper el flujo principal
         return HTMLResponse(f"<h3>✅ Tu cuenta está activa, pero hubo un error al generar tus credenciales: {e}.</h3>", status_code=500)
     
     actualizar_contadores_suscripcion(cuenta_activada['id'])
