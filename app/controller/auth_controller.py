@@ -1,4 +1,4 @@
-# app/controller/auth_controller.py
+    # app/controller/auth_controller.py
 from fastapi import HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 
