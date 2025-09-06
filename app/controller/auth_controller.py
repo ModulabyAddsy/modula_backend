@@ -161,7 +161,7 @@ async def verificar_cuenta(request: Request):
         # D. Añadir el primer admin al archivo descargado
         # Usamos la nueva función del servicio
         db_bytes_modificado = anadir_primer_administrador_general(
-            db_bytes_original, datos_propietario, username_empleado, contrasena_temporal,datos_propietario['nombre_completo']
+            db_bytes_original, datos_propietario, "11000", contrasena_temporal,datos_propietario['nombre_completo']
         )
         if not db_bytes_modificado: raise Exception("No se pudo insertar el admin en el archivo DB.")
         
@@ -318,7 +318,7 @@ async def check_activation_status(claim_token: str):
         # 3. Obtener información del primer usuario para crear el token
         # El nombre de usuario es ahora el ID de la cuenta, como se configuró en la verificación
         username_usuario = str(cuenta['id'])
-        usuario_info = obtener_info_empleado(db_bytes, username_usuario)
+        usuario_info = obtener_info_empleado(db_bytes, "11000")
         
         if not usuario_info:
             raise Exception("No se encontró al usuario administrador inicial.")
