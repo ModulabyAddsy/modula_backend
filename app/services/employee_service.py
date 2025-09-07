@@ -75,7 +75,7 @@ def obtener_info_empleado(db_bytes: bytes, nombre_usuario: str) -> dict | None:
             con.row_factory = sqlite3.Row # Esto hace que los resultados se puedan tratar como diccionarios
             cur = con.cursor()
             
-            cur.execute("SELECT * FROM empleados WHERE nombre_usuario = ?", (nombre_usuario,))
+            cur.execute("SELECT * FROM usuarios WHERE nombre_usuario = ?", (nombre_usuario,))
             empleado_row = cur.fetchone()
             
             # 3. Si se encontró, lo convierte a un diccionario estándar y lo devuelve

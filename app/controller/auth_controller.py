@@ -317,7 +317,7 @@ async def check_activation_status(claim_token: str):
         
         # 3. Obtener información del primer usuario para crear el token
         # El nombre de usuario es ahora el ID de la cuenta, como se configuró en la verificación
-        username_usuario = str(cuenta['id'])
+        username_usuario = str(cuenta['nombre_completo'])
         usuario_info = obtener_info_empleado(db_bytes, username_usuario)
         
         if not usuario_info:
