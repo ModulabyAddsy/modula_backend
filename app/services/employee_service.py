@@ -148,7 +148,7 @@ def anadir_primer_administrador_general(
             data = (
                 uuid_empleado, 
                 last_modified_timestamp,
-                1, 
+                0, 
                 nombre_completo, # <-- Usamos el nuevo parámetro para 'nombre_usuario'
                 int(username_empleado),
                 contrasena_hash,
