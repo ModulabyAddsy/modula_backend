@@ -80,12 +80,14 @@ async def recibir_registros_locales_logic(push_request: PushRecordsRequest, curr
             # --- ▼▼▼ LÓGICA DE UPDATE MEJORADA ▼▼▼ ---
             # Excluimos la PK ('uuid') y también el 'id' numérico del update.
             # El 'id' de la nube NUNCA debe ser modificado por un cliente.
-            update_assignments = ", ".join([f"{key} = excluded.{key}" for key in record.keys() if key not in [pk_column, 'id']])
+            update_assignments = ", ".join([f"{key} = excluded.{key}" for key in record.keys() if key not in [pk_column, 'id', 'needs_sync']])
             # --- ▲▲▲ FIN DE LA MEJORA ▲▲▲ ---
 
             sql = (f"INSERT INTO {push_request.table_name} ({columns}) VALUES ({placeholders}) "
                    f"ON CONFLICT({pk_column}) DO UPDATE SET {update_assignments} "
                    f"WHERE excluded.last_modified > {push_request.table_name}.last_modified;")
+            
+            record['needs_sync'] = 0
 
             try:
                 cursor.execute(sql, list(record.values()))
