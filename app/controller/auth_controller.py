@@ -428,7 +428,7 @@ async def mostrar_pagina_reseteo(token: str):
     <body>
         <div class="container">
             <h3>Establece tu nueva contraseña</h3>
-            <form action="/auth/ejecutar-reseteo" method="post" onsubmit="return validateForm()">
+            <form action="/api/v1/auth/ejecutar-reseteo" method="post" onsubmit="return validateForm()">
                 <input type="hidden" name="token" value="{token}" />
                 
                 <input type="password" id="nueva_contrasena" name="nueva_contrasena" placeholder="Nueva Contraseña" required minlength="6">
