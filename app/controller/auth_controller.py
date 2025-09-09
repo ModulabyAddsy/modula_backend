@@ -79,6 +79,8 @@ async def login_para_access_token(form_data: LoginData, client_ip: str):
     """
     correo_lower = form_data.correo.lower()
     
+    print(f"DEBUG - Contraseña de login recibida: '{form_data.contrasena}'")
+    
     cuenta = buscar_cuenta_addsy_por_correo(correo_lower)
     if not cuenta or not verificar_contrasena(form_data.contrasena, cuenta["contrasena_hash"]):
         raise HTTPException(
@@ -482,6 +484,8 @@ async def ejecutar_reseteo_contrasena(request: Request):
     form_data = await request.form()
     token = form_data.get("token")
     nueva_contrasena = form_data.get("nueva_contrasena")
+
+    print(f"DEBUG - Contraseña recibida del formulario: '{nueva_contrasena}'")
 
     if not all([token, nueva_contrasena]):
          return HTMLResponse("Faltan datos.", status_code=400)
