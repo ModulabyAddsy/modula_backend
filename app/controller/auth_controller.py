@@ -74,36 +74,33 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
 
 # --- 2. INICIO DE SESIÓN ---
 async def login_para_access_token(form_data: LoginData, client_ip: str):
-    """
-    Autentica al usuario y devuelve un token. Su única responsabilidad es la identidad.
-    """
     correo_lower = form_data.correo.lower()
-    
-    print(f"DEBUG - Contraseña de login recibida: '{form_data.contrasena}'")
-    
     cuenta = buscar_cuenta_addsy_por_correo(correo_lower)
-    if not cuenta or not verificar_contrasena(form_data.contrasena, cuenta["contrasena_hash"]):
+    
+    contrasena_limpia = form_data.contrasena.strip()
+    print(f"DEBUG - Contraseña de login recibida (limpia): '{contrasena_limpia}'")
+    # --- INICIA CÓDIGO DE DEPURACIÓN ---
+    if cuenta:
+        print("--- INICIANDO DEPURACIÓN DE LOGIN ---")
+        plain_password = form_data.contrasena
+        hashed_password_from_db = cuenta["contrasena_hash"]
+
+        # Imprimimos las variables para ver espacios en blanco
+        print(f"Password recibido (plano): |{plain_password}|")
+        print(f"Password en BD (hash):   |{hashed_password_from_db}|")
+
+        # Verificamos manualmente y mostramos el resultado
+        es_valida = verificar_contrasena(plain_password, hashed_password_from_db)
+        print(f"Resultado de verificar_contrasena: {es_valida}")
+        print("--- FIN DE DEPURACIÓN ---")
+    # --- TERMINA CÓDIGO DE DEPURACIÓN ---
+
+    if not cuenta or not verificar_contrasena(contrasena_limpia, cuenta["contrasena_hash"]):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Correo o contraseña incorrectos",
             headers={"WWW-Authenticate": "Bearer"},
         )
-        
-    if cuenta["estatus_cuenta"] != "verificada":
-        raise HTTPException(status_code=400, detail=f"La cuenta no ha sido verificada. Estatus: {cuenta['estatus_cuenta']}")
-    
-    access_token_data = {
-        "sub": cuenta["correo"], 
-        "id": cuenta["id"],
-        "id_empresa_addsy": cuenta["id_empresa_addsy"]
-    }
-    access_token = crear_access_token(data=access_token_data)
-    
-    # ✅ CORRECCIÓN: Ya no devolvemos el id_terminal aquí.
-    return {
-        "access_token": access_token, 
-        "token_type": "bearer"
-    }
 
 # --- 3. VERIFICACIÓN DE CUENTA (LÓGICA ACTUALIZADA) ---
 
