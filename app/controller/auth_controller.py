@@ -478,22 +478,29 @@ async def mostrar_pagina_reseteo(token: str):
     """
     return HTMLResponse(content=html_content)
 
-
 async def ejecutar_reseteo_contrasena(request: Request):
     """Procesa el formulario de la página de reseteo."""
-    form_data = await request.form()
-    token = form_data.get("token")
-    nueva_contrasena = form_data.get("nueva_contrasena")
+    try:  # <--- AÑADIR TRY
+        form_data = await request.form()
+        token = form_data.get("token")
+        nueva_contrasena = form_data.get("nueva_contrasena")
 
-    print(f"DEBUG - Contraseña recibida del formulario: '{nueva_contrasena}'")
+        print(f"DEBUG - Contraseña recibida del formulario: '{nueva_contrasena}'")
 
-    if not all([token, nueva_contrasena]):
-         return HTMLResponse("Faltan datos.", status_code=400)
+        if not all([token, nueva_contrasena]):
+            return HTMLResponse("Faltan datos.", status_code=400)
 
-    nueva_contrasena_hash = hash_contrasena(nueva_contrasena)
-    resultado = resetear_contrasena_con_token(token, nueva_contrasena_hash)
+        # Esta es la línea que puede fallar
+        nueva_contrasena_hash = hash_contrasena(nueva_contrasena)
 
-    if resultado == "success":
-        return HTMLResponse("<h3>✅ Contraseña actualizada exitosamente. Ya puedes cerrar esta ventana.</h3>")
-    else:
-        return HTMLResponse(f"<h3>❌ Error: {resultado.replace('_', ' ')}.</h3>", status_code=400)
+        resultado = resetear_contrasena_con_token(token, nueva_contrasena_hash)
+
+        if resultado == "success":
+            return HTMLResponse("<h3>✅ Contraseña actualizada exitosamente. Ya puedes cerrar esta ventana.</h3>")
+        else:
+            return HTMLResponse(f"<h3>❌ Error: {resultado.replace('_', ' ')}.</h3>", status_code=400)
+
+    except Exception as e: # <--- AÑADIR EXCEPT
+        # Si algo falla (como el hashing), ahora sí lo registraremos y devolveremos un error real.
+        print(f"🔥🔥 ERROR CRÍTICO en ejecutar_reseteo_contrasena: {e}")
+        return HTMLResponse("<h3>❌ Ocurrió un error inesperado en el servidor al intentar actualizar tu contraseña.</h3>", status_code=500)
