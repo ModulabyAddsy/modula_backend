@@ -45,17 +45,26 @@ from app.services.mail import enviar_correo_credenciales, enviar_correo_reseteo
 # --- 1. REGISTRO Y PAGO ---
 async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
     """
-    Paso 1 del flujo: Valida el correo, pre-registra la cuenta en la BD 
+    Paso 1 del flujo: Valida el correo, pre-registra la cuenta en la BD
     y crea una sesión de pago en Stripe.
     """
-    cuenta_existente = buscar_cuenta_addsy_por_correo(data.correo)
+
+    # Estandarizamos el correo a minúsculas para buscar y guardar.
+    correo_lower = data.correo.lower().strip()
+
+    cuenta_existente = buscar_cuenta_addsy_por_correo(correo_lower)
     if cuenta_existente and cuenta_existente["estatus_cuenta"] == "verificada":
         raise HTTPException(status_code=400, detail="Este correo ya está en uso.")
 
-    nuevo_usuario_data = data.dict() # Ahora esto ya incluye el claim_token
+    nuevo_usuario_data = data.dict()
+
+    # ✨ CAMBIO 1: Sobrescribimos el correo en los datos a guardar
+    # con su versión en minúsculas. Esto asegura que en la BD siempre esté estandarizado.
+    nuevo_usuario_data['correo'] = correo_lower
+
     nuevo_usuario_data['contrasena_hash'] = hash_contrasena(data.contrasena)
-    
-    cuenta_id = crear_cuenta_addsy(nuevo_usuario_data) # La función de DB ya está lista para recibirlo
+
+    cuenta_id = crear_cuenta_addsy(nuevo_usuario_data)
     if not cuenta_id:
         raise HTTPException(status_code=500, detail="Error crítico al crear la cuenta en la base de datos.")
 
@@ -64,14 +73,14 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
     try:
         checkout_session = await crear_sesion_checkout_para_registro(
             nombre_completo=data.nombre_completo,
-            correo=data.correo,
+            # ✨ CAMBIO 2: Enviamos a Stripe el correo ya estandarizado en minúsculas.
+            correo=correo_lower,
             id_terminal=data.id_terminal,
             aplica_prueba=True
         )
         return {"url_checkout": checkout_session.url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al contactar con el servicio de pago: {e}")
-
 # --- 2. INICIO DE SESIÓN ---
 async def login_para_access_token(form_data: LoginData, client_ip: str) -> Token:
     """
