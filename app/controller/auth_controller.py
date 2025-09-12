@@ -73,34 +73,56 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
         raise HTTPException(status_code=500, detail=f"Error al contactar con el servicio de pago: {e}")
 
 # --- 2. INICIO DE SESIÓN ---
-async def login_para_access_token(form_data: LoginData, client_ip: str):
-    correo_lower = form_data.correo.lower()
+async def login_para_access_token(form_data: LoginData, client_ip: str) -> Token:
+    """
+    Verifica las credenciales de un usuario y, si son correctas,
+    devuelve un token de acceso JWT.
+    """
+    correo_lower = form_data.correo.lower().strip()
     cuenta = buscar_cuenta_addsy_por_correo(correo_lower)
-    
-    contrasena_limpia = form_data.contrasena.strip()
-    print(f"DEBUG - Contraseña de login recibida (limpia): '{contrasena_limpia}'")
-    # --- INICIA CÓDIGO DE DEPURACIÓN ---
-    if cuenta:
-        print("--- INICIANDO DEPURACIÓN DE LOGIN ---")
-        plain_password = form_data.contrasena
-        hashed_password_from_db = cuenta["contrasena_hash"]
 
-        # Imprimimos las variables para ver espacios en blanco
-        print(f"Password recibido (plano): |{plain_password}|")
-        print(f"Password en BD (hash):   |{hashed_password_from_db}|")
-
-        # Verificamos manualmente y mostramos el resultado
-        es_valida = verificar_contrasena(plain_password, hashed_password_from_db)
-        print(f"Resultado de verificar_contrasena: {es_valida}")
-        print("--- FIN DE DEPURACIÓN ---")
-    # --- TERMINA CÓDIGO DE DEPURACIÓN ---
-
-    if not cuenta or not verificar_contrasena(contrasena_limpia, cuenta["contrasena_hash"]):
+    # --- PASO 1: Validar si el usuario existe ---
+    # Si la cuenta no se encuentra, lanzamos un error 401 de inmediato.
+    # Es una buena práctica de seguridad no revelar si el correo existe o no.
+    if not cuenta:
+        print(f"INFO - Intento de login fallido (correo no encontrado): {correo_lower}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Correo o contraseña incorrectos",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # --- PASO 2: Validar la contraseña ---
+    # El usuario existe, ahora comparamos el hash de la contraseña de la BD
+    # con la contraseña que nos enviaron en el formulario.
+    contrasena_limpia = form_data.contrasena.strip()
+    es_valida = verificar_contrasena(contrasena_limpia, cuenta["contrasena_hash"])
+
+    if not es_valida:
+        print(f"INFO - Intento de login fallido (contraseña incorrecta): {correo_lower}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Correo o contraseña incorrectos",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # --- PASO 3: Generar y devolver el token (Caso de éxito) ---
+    # Si llegamos a este punto, las credenciales son correctas.
+    print(f"INFO - Login exitoso para el usuario: {correo_lower}")
+
+    # Preparamos los datos que irán dentro del token (payload)
+    access_token_data = {
+        "sub": cuenta["correo"],
+        "id_cuenta_addsy": cuenta["id"],
+        "id_empresa_addsy": cuenta["id_empresa_addsy"]
+        # Puedes añadir más datos útiles aquí si lo necesitas en el futuro
+    }
+
+    # Creamos el token JWT
+    access_token = crear_access_token(data=access_token_data)
+
+    # Devolvemos el token en el formato esperado por el cliente
+    return Token(access_token=access_token, token_type="bearer")
 
 # --- 3. VERIFICACIÓN DE CUENTA (LÓGICA ACTUALIZADA) ---
 
