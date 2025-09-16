@@ -67,6 +67,7 @@ async def check_activation_status_route(claim_token: str):
 
 @router.post("/solicitar-reseteo")
 async def solicitar_reseteo_route(data: models.SolicitudReseteo):
+    data.email = data.email.lower().strip()
     return await auth_controller.solicitar_reseteo_contrasena(data)
 
 @router.get("/pagina-reseteo", response_class=HTMLResponse)
