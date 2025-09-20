@@ -70,8 +70,9 @@ class SucursalInfo(BaseModel):
     nombre: str
 
 class TerminalVerificationRequest(BaseModel):
-    """Schema para la petición de verificación de terminal."""
     id_terminal: str
+    gateway_mac: Optional[str] = None
+    ssid: Optional[str] = None
 
 
 class TerminalVerificationResponse(BaseModel):

@@ -234,6 +234,8 @@ def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequ
     redes_ancladas = get_redes_autorizadas_por_sucursal(id_sucursal_asignada)
     
     coincidencia_encontrada = False
+    # Si no hay redes ancladas para esta sucursal (es el primer inicio), la coincidencia debe fallar
+    # para forzar al administrador a anclar la primera red de confianza.
     if redes_ancladas:
         for red in redes_ancladas:
             if mac_gateway_actual and red['gateway_mac'] == mac_gateway_actual:
@@ -244,8 +246,7 @@ def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequ
                 break
     
     if not coincidencia_encontrada:
-        # La red no es de confianza. Devolvemos el error de ubicación para que un admin la ancle.
-        print(f"⚠️ Conflicto de ubicación para terminal {id_terminal}. La red local no coincide.")
+        print(f"⚠️ Conflicto de ubicación para terminal {id_terminal}. La red local no coincide o no hay redes ancladas.")
         sucursales = get_sucursales_por_cuenta(id_cuenta)
         return {
             "status": "location_mismatch",
@@ -258,10 +259,7 @@ def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequ
     suscripcion = actualizar_y_verificar_suscripcion(id_cuenta)
     
     if suscripcion and suscripcion['estado_suscripcion'] in ['activa', 'prueba_gratis']:
-        # ¡ÉXITO TOTAL! La red es correcta y la suscripción está activa.
         print(f"✅ Suscripción activa para cuenta {id_cuenta}. Generando token.")
-        
-        # Actualizamos la IP como dato de referencia y generamos el token
         actualizar_ip_terminal(id_terminal, client_ip)
         actualizar_contadores_suscripcion(id_cuenta)
 
@@ -283,7 +281,6 @@ def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequ
             estado_suscripcion=suscripcion['estado_suscripcion']
         )
     else:
-        # La red es correcta, pero la suscripción está vencida.
         print(f"🚨 Suscripción vencida para cuenta {id_cuenta}. Generando portal de pago.")
         cuenta_info = buscar_cuenta_addsy_por_id(id_cuenta)
         stripe_customer_id = cuenta_info.get("id_cliente_stripe")
