@@ -668,3 +668,47 @@ def buscar_cuenta_addsy_por_id(id_cuenta: int):
     finally:
         if conn: conn.close()
 
+def guardar_red_autorizada(id_sucursal: int, gateway_mac: str = None, ssid: str = None):
+    """Guarda una nueva red autorizada para una sucursal, evitando duplicados."""
+    conn = None
+    try:
+        conn = get_connection()
+        # La conexión ya está configurada para devolver diccionarios, no se necesita cursor_factory
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO redes_autorizadas (id_sucursal, gateway_mac, ssid)
+            SELECT %s, %s, %s
+            WHERE NOT EXISTS (
+                SELECT 1 FROM redes_autorizadas 
+                WHERE id_sucursal = %s AND gateway_mac IS NOT DISTINCT FROM %s AND ssid IS NOT DISTINCT FROM %s
+            );
+            """,
+            (id_sucursal, gateway_mac, ssid, id_sucursal, gateway_mac, ssid)
+        )
+        conn.commit()
+        cursor.close()
+    except Exception as e:
+        print(f"Error al guardar red autorizada: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+def get_redes_autorizadas_por_sucursal(id_sucursal: int) -> list:
+    """Obtiene todas las redes ancladas a una sucursal específica."""
+    conn = None
+    try:
+        conn = get_connection()
+        # La conexión ya devuelve diccionarios por defecto gracias a 'dict_row'
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM redes_autorizadas WHERE id_sucursal = %s", (id_sucursal,))
+        redes = cursor.fetchall()
+        cursor.close()
+        return redes
+    except Exception as e:
+        print(f"Error al obtener redes autorizadas: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()

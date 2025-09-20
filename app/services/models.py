@@ -201,3 +201,7 @@ class SubscriptionExpiredResponse(BaseModel):
     status: str = "subscription_expired"
     message: str
     payment_url: Optional[HttpUrl] = None
+
+class AnclarRedRequest(BaseModel):
+    gateway_mac: Optional[str] = None
+    ssid: Optional[str] = None

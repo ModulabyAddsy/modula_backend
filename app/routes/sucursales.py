@@ -1,7 +1,7 @@
 # app/routes/sucursales.py
 from fastapi import APIRouter, Depends, status
 from app.controller import sucursal_controller
-from app.services.models import Sucursal, SucursalCreate, SucursalInfo
+from app.services.models import Sucursal, SucursalCreate, SucursalInfo, AnclarRedRequest
 from app.services.security import get_current_active_user
 from typing import List
 
@@ -24,3 +24,12 @@ def endpoint_crear_sucursal(
 def endpoint_get_mis_sucursales(current_user: dict = Depends(get_current_active_user)):
     """Obtiene una lista de todas las sucursales de la cuenta del usuario."""
     return sucursal_controller.get_mis_sucursales(current_user)
+
+@router.post("/{id_sucursal}/anclar-red", status_code=200)
+def endpoint_anclar_red_a_sucursal(
+    id_sucursal: int,
+    request_data: AnclarRedRequest, # <-- Usar nuevo modelo
+    current_user: dict = Depends(get_current_active_user)
+):
+    """Ancla los identificadores de red actuales a una sucursal."""
+    return sucursal_controller.anclar_red_a_sucursal(id_sucursal, request_data, current_user)

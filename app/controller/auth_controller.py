@@ -31,7 +31,8 @@ from app.services.db import (
     buscar_cuenta_por_claim_token,guardar_token_reseteo,
     resetear_contrasena_con_token, get_ubicaciones_autorizadas, 
     autorizar_nueva_ubicacion, buscar_cuenta_addsy_por_id   ,
-    actualizar_suscripcion_tras_pago
+    actualizar_suscripcion_tras_pago    ,
+    get_redes_autorizadas_por_sucursal
 )
 from app.services import security
 from app.services import employee_service
@@ -211,6 +212,70 @@ async def verificar_cuenta(request: Request):
     actualizar_contadores_suscripcion(cuenta_activada['id'])
     
     return HTMLResponse("<h2>✅ ¡Todo listo! Tu cuenta ha sido configurada. Revisa tu correo para obtener tus credenciales de acceso.</h2>")
+
+def verificar_terminal(datos_verificacion):
+    """
+    Verifica una terminal usando identificadores de red local (Gateway MAC y/o SSID).
+    Este es el nuevo método robusto.
+    """
+    # 1. El cliente ahora envía sus identificadores de red actuales
+    id_terminal = datos_verificacion.id_terminal
+    mac_gateway_actual = datos_verificacion.gateway_mac
+    ssid_actual = datos_verificacion.ssid
+    
+    # 2. Buscamos la terminal y su sucursal asignada
+    terminal = buscar_terminal_activa_por_id(id_terminal)
+    if not terminal:
+        raise HTTPException(status_code=404, detail="Terminal no encontrada o inactiva.")
+    id_sucursal_asignada = terminal['id_sucursal']
+    
+    # 3. Obtenemos las redes ancladas para esa sucursal desde la BD
+    redes_ancladas = get_redes_autorizadas_por_sucursal(id_sucursal_asignada)
+    
+    # 4. Comparamos
+    coincidencia_encontrada = False
+    if not redes_ancladas:
+        # Si no hay redes ancladas, es la primera vez, se requiere login para anclar.
+        coincidencia_encontrada = False
+    else:
+        for red in redes_ancladas:
+            # Comparamos si la MAC del gateway coincide (y no es nula)
+            if mac_gateway_actual and red['gateway_mac'] == mac_gateway_actual:
+                coincidencia_encontrada = True
+                break
+            # Comparamos si el SSID del WiFi coincide (y no es nulo)
+            if ssid_actual and red['ssid'] == ssid_actual:
+                coincidencia_encontrada = True
+                break
+            
+    if coincidencia_encontrada:
+        # ¡Éxito! La IP pública ya no importa.
+        # CORRECCIÓN: Generamos un token de acceso real.
+        token_data = {
+            "sub": terminal["correo_cuenta"], 
+            "id": terminal["id_cuenta"],
+            "id_empresa_addsy": terminal["id_empresa_addsy"]
+        }
+        access_token = security.crear_access_token(data=token_data)
+        
+        return Token(
+            access_token=access_token, 
+            token_type="bearer", 
+            id_terminal=id_terminal,
+            id_sucursal=id_sucursal_asignada,
+            id_empresa=terminal["id_empresa_addsy"]
+        ).dict()
+    else:
+        # No hay coincidencia, la ubicación es realmente diferente.
+        # Devolvemos la lista de sucursales para que el usuario pueda resolver.
+        from app.services.db import get_sucursales_por_cuenta
+        sucursales = get_sucursales_por_cuenta(terminal["id_cuenta"])
+        
+        return {
+            "status": "location_mismatch",
+            "message": "La red actual no está autorizada para esta sucursal.",
+            "sucursales_existentes": sucursales
+        }
 
 def verificar_terminal_activa_controller(
     request_data: models.TerminalVerificationRequest, client_ip: str

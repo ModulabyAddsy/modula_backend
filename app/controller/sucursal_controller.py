@@ -1,6 +1,6 @@
 # app/controller/sucursal_controller.py
 from fastapi import HTTPException
-from app.services.db import crear_nueva_sucursal, get_sucursales_por_cuenta
+from app.services.db import crear_nueva_sucursal, get_sucursales_por_cuenta, guardar_red_autorizada
 from app.services.cloud.setup_empresa_cloud import crear_estructura_sucursal
 from app.services.models import SucursalCreate
 
@@ -36,3 +36,9 @@ def get_mis_sucursales(current_user: dict):
     """Obtiene las sucursales del usuario actualmente autenticado."""
     id_cuenta = current_user.get('id')
     return get_sucursales_por_cuenta(id_cuenta)
+
+def anclar_red_a_sucursal(id_sucursal: int, data, current_user: dict):
+    # Aquí llamarías a una función en tu capa de base de datos
+    # que inserte los datos de la red en la nueva tabla 'redes_autorizadas'
+    guardar_red_autorizada(id_sucursal, data.gateway_mac, data.ssid)
+    return {"status": "ok", "message": "Red anclada a la sucursal exitosamente."}
