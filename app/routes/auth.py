@@ -40,23 +40,19 @@ async def login(data: LoginData, request: Request): # 1. Añadir 'request: Reque
 
 @router.post(
     "/verificar-terminal",
-    # ¡AQUÍ ESTÁ EL CAMBIO! Le decimos que la respuesta puede ser de un tipo O del otro.
-    response_model=Union[models.TerminalVerificationResponse, models.SubscriptionExpiredResponse],
-    summary="Verifica una terminal al arranque",
+    response_model=Union[models.TerminalVerificationResponse, models.SubscriptionExpiredResponse, models.LocationMismatchResponse], # Modelo de respuesta flexible
+    summary="Verifica y autoriza una terminal al arranque",
     tags=["Autenticación"]
 )
-def verificar_terminal_activa_route(
+def verificar_terminal_route(
     request_data: models.TerminalVerificationRequest, 
     request: Request 
 ):
     """
-    Verifica si un ID de terminal es válido y está activo.
-    Si es exitoso, devuelve un token de acceso y datos de la sesión.
+    Endpoint unificado que primero valida la red local y luego la suscripción.
     """
-    # Llama a la función del controlador que contiene toda la lógica.
-    # La ruta se mantiene limpia y solo se encarga de recibir la petición
-    # y devolver la respuesta.
-    return auth_controller.verificar_terminal_activa_controller(
+    # CORREGIDO: Llama a nuestra nueva y única función en el controlador
+    return auth_controller.verificar_y_autorizar_terminal(
         request_data=request_data,
         client_ip=request.client.host
     )

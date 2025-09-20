@@ -29,8 +29,7 @@ from app.services.db import (
     buscar_sucursal_por_ip_en_otra_terminal, # <--- NUEVA
     get_sucursales_por_cuenta, get_sucursales_por_cuenta,
     buscar_cuenta_por_claim_token,guardar_token_reseteo,
-    resetear_contrasena_con_token, get_ubicaciones_autorizadas, 
-    autorizar_nueva_ubicacion, buscar_cuenta_addsy_por_id   ,
+    resetear_contrasena_con_token, buscar_cuenta_addsy_por_id   ,
     actualizar_suscripcion_tras_pago    ,
     get_redes_autorizadas_por_sucursal
 )
@@ -38,7 +37,7 @@ from app.services import security
 from app.services import employee_service
 from app.services.employee_service import anadir_primer_administrador
 from app.services.cloud.setup_empresa_cloud import subir_archivo_db
-from app.services.utils import generar_contrasena_temporal, generar_token_verificacion, get_ip_geolocation
+from app.services.utils import generar_contrasena_temporal, generar_token_verificacion
 from app.services.mail import enviar_correo_credenciales, enviar_correo_reseteo
 
 #COMENTARIO PARA SUBIR A GITHUB
@@ -213,177 +212,92 @@ async def verificar_cuenta(request: Request):
     
     return HTMLResponse("<h2>✅ ¡Todo listo! Tu cuenta ha sido configurada. Revisa tu correo para obtener tus credenciales de acceso.</h2>")
 
-def verificar_terminal(datos_verificacion):
+def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequest, client_ip: str):
     """
-    Verifica una terminal usando identificadores de red local (Gateway MAC y/o SSID).
-    Este es el nuevo método robusto.
+    Función UNIFICADA que se encarga de todo el proceso de verificación:
+    1. Valida la ubicación de la terminal usando la nueva lógica de Red Local (LAN).
+    2. Si la red es válida, verifica el estado de la suscripción (activa, vencida, etc.).
+    3. Devuelve la respuesta apropiada (token de acceso, error de ubicación o error de suscripción).
     """
-    # 1. El cliente ahora envía sus identificadores de red actuales
-    id_terminal = datos_verificacion.id_terminal
-    mac_gateway_actual = datos_verificacion.gateway_mac
-    ssid_actual = datos_verificacion.ssid
+    # --- ETAPA 1: VERIFICACIÓN DE RED LOCAL (EL NUEVO SISTEMA) ---
+    id_terminal = request_data.id_terminal
+    mac_gateway_actual = request_data.gateway_mac
+    ssid_actual = request_data.ssid
     
-    # 2. Buscamos la terminal y su sucursal asignada
     terminal = buscar_terminal_activa_por_id(id_terminal)
     if not terminal:
         raise HTTPException(status_code=404, detail="Terminal no encontrada o inactiva.")
-    id_sucursal_asignada = terminal['id_sucursal']
     
-    # 3. Obtenemos las redes ancladas para esa sucursal desde la BD
+    id_sucursal_asignada = terminal['id_sucursal']
+    id_cuenta = terminal['id_cuenta_addsy']
+    
     redes_ancladas = get_redes_autorizadas_por_sucursal(id_sucursal_asignada)
     
-    # 4. Comparamos
     coincidencia_encontrada = False
-    if not redes_ancladas:
-        # Si no hay redes ancladas, es la primera vez, se requiere login para anclar.
-        coincidencia_encontrada = False
-    else:
+    if redes_ancladas:
         for red in redes_ancladas:
-            # Comparamos si la MAC del gateway coincide (y no es nula)
             if mac_gateway_actual and red['gateway_mac'] == mac_gateway_actual:
                 coincidencia_encontrada = True
                 break
-            # Comparamos si el SSID del WiFi coincide (y no es nulo)
             if ssid_actual and red['ssid'] == ssid_actual:
                 coincidencia_encontrada = True
                 break
-            
-    if coincidencia_encontrada:
-        # ¡Éxito! La IP pública ya no importa.
-        # CORRECCIÓN: Generamos un token de acceso real.
+    
+    if not coincidencia_encontrada:
+        # La red no es de confianza. Devolvemos el error de ubicación para que un admin la ancle.
+        print(f"⚠️ Conflicto de ubicación para terminal {id_terminal}. La red local no coincide.")
+        sucursales = get_sucursales_por_cuenta(id_cuenta)
+        return {
+            "status": "location_mismatch",
+            "message": "La red actual no está autorizada para esta sucursal.",
+            "sucursales_existentes": [models.SucursalInfo(**s) for s in sucursales]
+        }
+
+    # --- ETAPA 2: VERIFICACIÓN DE SUSCRIPCIÓN (SI LA RED ES VÁLIDA) ---
+    print(f"✅ Red local verificada para terminal {id_terminal}. Procediendo a verificar suscripción.")
+    suscripcion = actualizar_y_verificar_suscripcion(id_cuenta)
+    
+    if suscripcion and suscripcion['estado_suscripcion'] in ['activa', 'prueba_gratis']:
+        # ¡ÉXITO TOTAL! La red es correcta y la suscripción está activa.
+        print(f"✅ Suscripción activa para cuenta {id_cuenta}. Generando token.")
+        
+        # Actualizamos la IP como dato de referencia y generamos el token
+        actualizar_ip_terminal(id_terminal, client_ip)
+        actualizar_contadores_suscripcion(id_cuenta)
+
         token_data = {
-            "sub": terminal["correo_cuenta"], 
-            "id": terminal["id_cuenta"],
+            "sub": terminal["correo"],
+            "id_cuenta_addsy": id_cuenta,
+            "id_sucursal": id_sucursal_asignada,
             "id_empresa_addsy": terminal["id_empresa_addsy"]
         }
         access_token = security.crear_access_token(data=token_data)
         
-        return Token(
-            access_token=access_token, 
-            token_type="bearer", 
-            id_terminal=id_terminal,
-            id_sucursal=id_sucursal_asignada,
-            id_empresa=terminal["id_empresa_addsy"]
-        ).dict()
+        return models.TerminalVerificationResponse(
+            status="ok",
+            access_token=access_token,
+            id_empresa=terminal["id_empresa_addsy"],
+            nombre_empresa=terminal["nombre_empresa"],
+            id_sucursal=terminal["id_sucursal"],
+            nombre_sucursal=terminal["nombre_sucursal"],
+            estado_suscripcion=suscripcion['estado_suscripcion']
+        )
     else:
-        # No hay coincidencia, la ubicación es realmente diferente.
-        # Devolvemos la lista de sucursales para que el usuario pueda resolver.
-        from app.services.db import get_sucursales_por_cuenta
-        sucursales = get_sucursales_por_cuenta(terminal["id_cuenta"])
-        
-        return {
-            "status": "location_mismatch",
-            "message": "La red actual no está autorizada para esta sucursal.",
-            "sucursales_existentes": sucursales
-        }
-
-def verificar_terminal_activa_controller(
-    request_data: models.TerminalVerificationRequest, client_ip: str
-):
-    terminal_info = buscar_terminal_activa_por_id(request_data.id_terminal)
-    if not terminal_info:
-        raise HTTPException(status_code=404, detail="Terminal no registrada o inactiva.")
-
-    id_cuenta = terminal_info['id_cuenta_addsy']
-    id_sucursal_asignada = terminal_info['id_sucursal']
-
-    suscripcion_local = actualizar_y_verificar_suscripcion(id_cuenta)
-    
-    if suscripcion_local and suscripcion_local['estado_suscripcion'] in ['activa', 'prueba_gratis']:
-        # --- CASO 1: LA SUSCRIPCIÓN LOCAL ESTÁ ACTIVA ---
-        # El flujo continúa normalmente con la verificación de ubicación.
-        print(f"✅ Suscripción local activa para cuenta {id_cuenta}. Procediendo.")
-        
-        actualizar_ip_terminal(request_data.id_terminal, client_ip)
-        geo_actual = get_ip_geolocation(client_ip)
-        ubicaciones_autorizadas = get_ubicaciones_autorizadas(id_sucursal_asignada)
-        coincidencia_encontrada = False
-
-        if not ubicaciones_autorizadas:
-            print(f"📍 Primera ubicación para sucursal {id_sucursal_asignada}. Autorizando automáticamente.")
-            autorizar_nueva_ubicacion(id_sucursal_asignada, client_ip, geo_actual)
-            coincidencia_encontrada = True
-        else:
-            for ubicacion in ubicaciones_autorizadas:
-                if ubicacion.get('isp') == geo_actual.get('isp') and ubicacion.get('ciudad') == geo_actual.get('ciudad'):
-                    coincidencia_encontrada = True
-                    break
-        
-        if coincidencia_encontrada:
-            print(f"✅ Ubicación verificada para terminal {request_data.id_terminal}.")
-            actualizar_contadores_suscripcion(id_cuenta)
-            access_token_data = {
-                "sub": terminal_info["correo"],
-                "id_cuenta_addsy": id_cuenta,
-                "id_sucursal": id_sucursal_asignada,
-                "id_empresa_addsy": terminal_info["id_empresa_addsy"]
-            }
-            access_token = security.crear_access_token(data=access_token_data)
-            return models.TerminalVerificationResponse(
-                status="ok",
-                access_token=access_token,
-                id_empresa=terminal_info["id_empresa_addsy"],
-                nombre_empresa=terminal_info["nombre_empresa"],
-                id_sucursal=terminal_info["id_sucursal"],
-                nombre_sucursal=terminal_info["nombre_sucursal"],
-                estado_suscripcion=suscripcion_local['estado_suscripcion']
-            )
-        else:
-            print(f"⚠️ Conflicto de ubicación para terminal {request_data.id_terminal}. No está en su sucursal asignada.")
-            todas_las_sucursales_dict = get_sucursales_por_cuenta(id_cuenta)
-            sugerencia_migracion = None
-            for otra_sucursal in todas_las_sucursales_dict:
-                if otra_sucursal['id'] == id_sucursal_asignada:
-                    continue
-                ubicaciones_otra_sucursal = get_ubicaciones_autorizadas(otra_sucursal['id'])
-                for ubicacion_otra in ubicaciones_otra_sucursal:
-                    if ubicacion_otra.get('isp') == geo_actual.get('isp') and ubicacion_otra.get('ciudad') == geo_actual.get('ciudad'):
-                        sugerencia_migracion = models.SucursalInfo(**otra_sucursal)
-                        break
-                if sugerencia_migracion:
-                    break
-            return models.TerminalVerificationResponse(
-                status="location_mismatch",
-                sugerencia_migracion=sugerencia_migracion,
-                sucursales_existentes=[models.SucursalInfo(**s) for s in todas_las_sucursales_dict]
-            )
-    else:
-        # --- CASO 2: LA SUSCRIPCIÓN LOCAL ESTÁ VENCIDA (INICIA DOBLE VERIFICACIÓN) ---
-        print(f"⚠️ Suscripción local vencida para cuenta {id_cuenta}. Realizando doble verificación con Stripe...")
-        
+        # La red es correcta, pero la suscripción está vencida.
+        print(f"🚨 Suscripción vencida para cuenta {id_cuenta}. Generando portal de pago.")
         cuenta_info = buscar_cuenta_addsy_por_id(id_cuenta)
-        stripe_sub_id = cuenta_info.get("id_suscripcion_stripe")
-        
-        # 1. Verificamos el estado real en Stripe
-        stripe_status_info = get_subscription_status_from_stripe(stripe_sub_id)
+        stripe_customer_id = cuenta_info.get("id_cliente_stripe")
 
-        # 2. DECISIÓN INTELIGENTE
-        if stripe_status_info and stripe_status_info["status"] == "active":
-            # ¡AUTO-REPARACIÓN! El webhook falló, pero lo corregimos ahora.
-            print(f"✅ Discrepancia encontrada. Stripe dice 'active'. Auto-corrigiendo base de datos local.")
-            actualizar_suscripcion_tras_pago(stripe_sub_id, stripe_status_info["period_end_ts"])
-            # Volvemos a llamar a esta misma función. La próxima vez, entrará en el 'if' de arriba.
-            return verificar_terminal_activa_controller(request_data, client_ip)
-        else:
-            # Es una suscripción REALMENTE vencida. Procedemos a generar el panel de pago.
-            estado_real = stripe_status_info["status"] if stripe_status_info else (suscripcion_local['estado_suscripcion'] if suscripcion_local else 'desconocido')
-            print(f"🚨 Confirmado con Stripe. La suscripción no está activa (Estado: {estado_real}). Generando panel de pago.")
-            
-            stripe_customer_id = cuenta_info.get("id_cliente_stripe")
+        if not stripe_customer_id:
+            raise HTTPException(status_code=403, detail="Suscripción vencida y no se encontró ID de cliente para el pago.")
 
-            if not stripe_customer_id:
-                raise HTTPException(status_code=403, detail="Suscripción vencida y no se encontró ID de cliente para el pago.")
+        url_portal_pago = crear_sesion_portal_cliente(stripe_customer_id)
 
-            url_portal_pago = crear_sesion_portal_cliente(
-                stripe_customer_id, 
-                return_url="https://addsy.com.mx/pago-exitoso" # URL a la que Stripe redirige tras el pago
-            )
-
-            return {
-                "status": "subscription_expired",
-                "message": f"Tu suscripción está {estado_real}. Por favor, actualiza tu método de pago.",
-                "payment_url": url_portal_pago
-            }
+        return {
+            "status": "subscription_expired",
+            "message": "Tu suscripción ha vencido. Por favor, actualiza tu método de pago.",
+            "payment_url": url_portal_pago
+        }
             
 async def check_activation_status(claim_token: str):
     """

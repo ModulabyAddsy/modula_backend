@@ -2,7 +2,7 @@
 from fastapi import HTTPException, Request
 from app.services.db import (get_terminales_por_cuenta, crear_terminal, 
                              actualizar_sucursal_de_terminal, actualizar_contadores_suscripcion,
-                             actualizar_ip_terminal, buscar_terminal_por_hardware_id, autorizar_nueva_ubicacion)
+                             actualizar_ip_terminal, buscar_terminal_por_hardware_id)
 from app.controller import sucursal_controller
 from app.services import security
 from app.services.models import TerminalCreate, AsignarTerminalRequest, CrearSucursalYAsignarRequest, Token
@@ -34,7 +34,7 @@ def registrar_nueva_terminal(terminal_data: TerminalCreate, current_user: dict, 
 
 def migrar_terminal_a_sucursal(request_data: AsignarTerminalRequest, current_user: dict, request: Request):
     """Mueve una terminal a otra sucursal y actualiza contadores."""
-    client_ip = request.client.host
+    client_ip = request.client.host # Lo mantenemos para registro
     
     exito = actualizar_sucursal_de_terminal(
         id_terminal=request_data.id_terminal_origen,
@@ -43,21 +43,15 @@ def migrar_terminal_a_sucursal(request_data: AsignarTerminalRequest, current_use
     if not exito:
         raise HTTPException(status_code=500, detail="No se pudo actualizar la sucursal de la terminal en la BD.")
     
+    # Actualizamos la IP como referencia, pero ya no autorizamos la ubicación aquí.
     actualizar_ip_terminal(id_terminal=request_data.id_terminal_origen, ip=client_ip)
     actualizar_contadores_suscripcion(current_user['id'])
     
-    # No se necesita sincronizar aquí porque el número de terminales/sucursales no cambió.
-    
-    # ✅ AÑADIDO: Autorizar esta nueva ubicación para la sucursal de destino
-    geo_data = get_ip_geolocation(client_ip)
-    autorizar_nueva_ubicacion(request_data.id_sucursal_destino, client_ip, geo_data)
-    
-    actualizar_contadores_suscripcion(current_user['id'])
     return {"status": "ok", "message": "Terminal migrada exitosamente."}
 
 def crear_sucursal_y_asignar_terminal(request_data: CrearSucursalYAsignarRequest, current_user: dict, request: Request):
     """Orquesta la creación de una sucursal y la asignación de una terminal."""
-    client_ip = request.client.host
+    client_ip = request.client.host # Lo mantenemos para registro
     id_cuenta = current_user.get('id')
 
     # 1. Crear la nueva sucursal
@@ -73,24 +67,11 @@ def crear_sucursal_y_asignar_terminal(request_data: CrearSucursalYAsignarRequest
         raise HTTPException(status_code=500, detail="La sucursal se creó pero no se pudo asignar la terminal.")
         
     actualizar_ip_terminal(id_terminal=request_data.id_terminal_origen, ip=client_ip)
-
-    # ✅ 3. Actualizar contadores y sincronizar con Stripe
     actualizar_contadores_suscripcion(id_cuenta)
     sincronizar_suscripcion_con_db(id_cuenta)
     
-    # ✅ AÑADIDO: Autorizar esta nueva ubicación para la sucursal recién creada
-    id_sucursal_nueva = nueva_sucursal['id']
-    geo_data = get_ip_geolocation(client_ip)
-    autorizar_nueva_ubicacion(id_sucursal_nueva, client_ip, geo_data)
-    
-    sincronizar_suscripcion_con_db(id_cuenta)
-    
-    # 4. Crear un nuevo token
-    access_token_data = {
-        "sub": current_user.get("sub"),
-        "id": id_cuenta,
-        "id_empresa_addsy": current_user.get("id_empresa_addsy")
-    }
+    # 3. Crear un nuevo token
+    access_token_data = { "sub": current_user.get("sub"), "id": id_cuenta, "id_empresa_addsy": current_user.get("id_empresa_addsy") }
     access_token = security.crear_access_token(data=access_token_data)
     
     return Token(access_token=access_token, token_type="bearer", id_terminal=request_data.id_terminal_origen)

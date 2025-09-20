@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr, Field, HttpUrl
 from typing import Optional, List
 from datetime import date, datetime
 from uuid import UUID
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Literal, Optional
 # --- Modelos de Autenticación (Existentes) ---
 
 class RegistroCuenta(BaseModel):
@@ -205,3 +205,9 @@ class SubscriptionExpiredResponse(BaseModel):
 class AnclarRedRequest(BaseModel):
     gateway_mac: Optional[str] = None
     ssid: Optional[str] = None
+
+class LocationMismatchResponse(BaseModel):
+    status: Literal["location_mismatch"]
+    message: str
+    # Usamos Optional porque sugerencia_migracion ya no es parte de este flujo
+    sucursales_existentes: List[SucursalInfo]
