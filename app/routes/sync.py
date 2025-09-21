@@ -8,7 +8,8 @@ from app.services.models import PushRecordsRequest
 from app.controller.sync_controller import (
     inicializar_sincronizacion_logic,
     recibir_registros_locales_logic,
-    descargar_archivo_db_logic
+    descargar_archivo_db_logic,
+    get_deltas_logic
 )
 
 router = APIRouter()
@@ -26,3 +27,8 @@ async def recibir_registros_locales_route(push_request: PushRecordsRequest, curr
 @router.get("/pull-db/{key_path:path}")
 def descargar_archivo_db_route(key_path: str, current_user: dict = Depends(get_current_user_from_token)):
     return descargar_archivo_db_logic(key_path, current_user)
+
+@router.post("/get-deltas")
+async def get_deltas_route(sync_timestamps: dict, current_user: dict = Depends(get_current_user_from_token)):
+    # CORRECCIÓN 2: Llamamos a la función directamente, ya que la hemos importado.
+    return await get_deltas_logic(sync_timestamps, current_user)

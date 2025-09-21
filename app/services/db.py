@@ -5,6 +5,7 @@ from psycopg.rows import dict_row
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone # Asegúrate de importar timezone
 from uuid import UUID
+import json
 
 def get_connection():
     try:
@@ -667,6 +668,83 @@ def get_redes_autorizadas_por_sucursal(id_sucursal: int) -> list:
     except Exception as e:
         print(f"Error al obtener redes autorizadas: {e}")
         return []
+    finally:
+        if conn:
+            conn.close()
+            
+def get_changes_since(id_cuenta: int, sync_timestamps: dict) -> dict:
+    """
+    Busca en la tabla sync_log los registros más nuevos que los timestamps
+    proporcionados por el cliente para devolver un paquete de cambios (delta).
+    """
+    changes = {}
+    conn = get_connection()
+    if not conn: return {}
+
+    try:
+        with conn.cursor() as cur:
+            # El cliente envía un diccionario como {'usuarios': 'timestamp', 'ventas': 'timestamp'}
+            # Iteramos sobre cada tabla que el cliente conoce.
+            for tabla, ultimo_timestamp_cliente in sync_timestamps.items():
+                
+                # Buscamos en el log de cambios
+                cur.execute(
+                    """
+                    SELECT DISTINCT ON (uuid_registro) * FROM sync_log
+                    WHERE id_cuenta_addsy = %s 
+                      AND tabla_modificada = %s 
+                      AND fecha_modificacion > %s
+                    ORDER BY uuid_registro, fecha_modificacion DESC;
+                    """,
+                    (id_cuenta, tabla, ultimo_timestamp_cliente)
+                )
+                
+                nuevos_registros = cur.fetchall()
+                if nuevos_registros:
+                    # Extraemos solo los datos del registro para enviarlos al cliente
+                    changes[tabla] = [row['datos_registro'] for row in nuevos_registros]
+    except Exception as e:
+        print(f"🔥🔥 ERROR obteniendo deltas desde sync_log: {e}")
+    finally:
+        if conn: conn.close()
+        
+    return changes
+
+def guardar_batch_sync_log(id_cuenta: int, tabla: str, registros: list):
+    """
+    Guarda un lote de registros en la tabla sync_log de PostgreSQL.
+    """
+    if not registros:
+        return
+
+    conn = get_connection()
+    if not conn:
+        print("🔥🔥 ERROR: No se pudo conectar a la BD para guardar en sync_log.")
+        return
+
+    try:
+        with conn.cursor() as cur:
+            # Preparamos los datos para la inserción en lote
+            datos_para_insertar = []
+            for record in registros:
+                # El registro se guarda como un string JSONB
+                datos_json = json.dumps(record, default=str) 
+                datos_para_insertar.append(
+                    (id_cuenta, tabla, record['uuid'], datos_json)
+                )
+            
+            # Usamos executemany para una inserción en lote ultra eficiente
+            sql = """
+                INSERT INTO sync_log (id_cuenta_addsy, tabla_modificada, uuid_registro, datos_registro)
+                VALUES (%s, %s, %s, %s);
+            """
+            cur.executemany(sql, datos_para_insertar)
+            conn.commit()
+            print(f"✅ Log de sincronización actualizado para {len(registros)} registros en la tabla '{tabla}'.")
+
+    except Exception as e:
+        conn.rollback()
+        print(f"🔥🔥 ERROR guardando en sync_log: {e}")
     finally:
         if conn:
             conn.close()

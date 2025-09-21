@@ -15,7 +15,7 @@ from app.services.cloud.setup_empresa_cloud import (
     subir_archivo_a_r2
 )
 from app.services.models import PushRecordsRequest
-from app.services.db import get_sucursal_info
+from app.services.db import get_sucursal_info, get_changes_since, guardar_batch_sync_log
 from app.controller.sync_logic import stage_1_align_cloud_files, stage_2_migrate_cloud_schemas
 
 
@@ -51,17 +51,16 @@ async def inicializar_sincronizacion_logic(current_user: dict):
 
 async def recibir_registros_locales_logic(push_request: PushRecordsRequest, current_user: dict):
     """
-    Lógica definitiva de sincronización. El UUID es el ancla para inserciones y actualizaciones.
+    Lógica definitiva de sincronización. Fusiona cambios en SQLite y los registra en PostgreSQL.
     """
-    logging.warning("--- ✅ EJECUTANDO LÓGICA DE SINCRONIZACIÓN DEFINITIVA BASADA EN UUID ---")
-
-    key_path = f"{push_request.db_relative_path}"
+    key_path = push_request.db_relative_path
+    id_cuenta = current_user['id_cuenta_addsy']
     
-    logging.info(f"🔄 Sincronizando {len(push_request.records)} registros para '{key_path}' usando PK='{push_request.primary_key_column}'")
+    print(f"🔄 Sincronizando {len(push_request.records)} registros para '{key_path}'")
     
     db_bytes = descargar_archivo_de_r2(key_path)
     if not db_bytes:
-        raise HTTPException(status_code=404, detail=f"El archivo '{push_request.db_relative_path}' no existe en la nube.")
+        raise HTTPException(status_code=404, detail=f"El archivo '{key_path}' no existe en la nube.")
 
     temp_file_path = None
     try:
@@ -73,31 +72,25 @@ async def recibir_registros_locales_logic(push_request: PushRecordsRequest, curr
         cursor = conn.cursor()
         
         for record in push_request.records:
+            record['needs_sync'] = 0 # Reseteamos la bandera antes de guardar
             columns = ", ".join(record.keys())
             placeholders = ", ".join(["?"] * len(record))
-            pk_column = push_request.primary_key_column # Ahora será 'uuid'
+            pk_column = "uuid" # Siempre usamos uuid para la consistencia
             
-            # --- ▼▼▼ LÓGICA DE UPDATE MEJORADA ▼▼▼ ---
-            # Excluimos la PK ('uuid') y también el 'id' numérico del update.
-            # El 'id' de la nube NUNCA debe ser modificado por un cliente.
-            update_assignments = ", ".join([f"{key} = excluded.{key}" for key in record.keys() if key not in [pk_column, 'id', 'needs_sync']])
-            # --- ▲▲▲ FIN DE LA MEJORA ▲▲▲ ---
-
+            update_assignments = ", ".join([f"{key} = excluded.{key}" for key in record.keys() if key not in [pk_column, 'id', 'needs_sync', 'last_modified']])
+            
+            # La lógica ON CONFLICT es la clave para evitar duplicados y pérdida de datos
             sql = (f"INSERT INTO {push_request.table_name} ({columns}) VALUES ({placeholders}) "
-                   f"ON CONFLICT({pk_column}) DO UPDATE SET {update_assignments} "
+                   f"ON CONFLICT({pk_column}) DO UPDATE SET {update_assignments}, last_modified = excluded.last_modified "
                    f"WHERE excluded.last_modified > {push_request.table_name}.last_modified;")
             
-            record['needs_sync'] = 0
-
-            try:
-                cursor.execute(sql, list(record.values()))
-            except sqlite3.Error as e:
-                logging.error(f"Error de SQL: {e}")
-                conn.close()
-                raise HTTPException(status_code=409, detail=f"Conflicto de SQL: {e}")
+            cursor.execute(sql, list(record.values()))
         
         conn.commit()
         conn.close()
+
+        # Después de fusionar en SQLite, registramos los cambios en el log de PostgreSQL
+        guardar_batch_sync_log(id_cuenta, push_request.table_name, push_request.records)
 
         with open(temp_file_path, "rb") as f:
             updated_db_bytes = f.read()
@@ -110,6 +103,12 @@ async def recibir_registros_locales_logic(push_request: PushRecordsRequest, curr
             os.remove(temp_file_path)
 
     return JSONResponse(content={"status": "push_success", "merged_records": len(push_request.records)})
+
+async def get_deltas_logic(sync_timestamps: dict, current_user: dict):
+    """Orquesta la obtención de cambios (deltas) desde la base de datos PostgreSQL."""
+    id_cuenta = current_user['id_cuenta_addsy']
+    changes = get_changes_since(id_cuenta, sync_timestamps)
+    return changes
 
 
 def descargar_archivo_db_logic(key_path: str, current_user: dict):
