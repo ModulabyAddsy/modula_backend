@@ -56,7 +56,7 @@ async def crear_sesion_checkout_para_registro(nombre_completo: str, correo: str,
         # 3. Si aplica la prueba, añadir los días de prueba a la suscripción.
         if aplica_prueba:
             session_args["subscription_data"] = {
-                "trial_period_days": 14
+                "trial_period_days": 7
             }
 
         # 4. Crear y devolver el objeto de la sesión de Checkout.
