@@ -26,12 +26,13 @@ from app.services.db import (
     actualizar_y_verificar_suscripcion,
     actualizar_contadores_suscripcion,
     get_terminales_por_cuenta, # <-- ESTA ES LA FUNCIÓN QUE FALTABA IMPORTA
-    buscar_sucursal_por_ip_en_otra_terminal, # <--- NUEVA
+    buscar_sucursal_por_ip_en_otra_terminal, 
     get_sucursales_por_cuenta, get_sucursales_por_cuenta,
     buscar_cuenta_por_claim_token,guardar_token_reseteo,
     resetear_contrasena_con_token, buscar_cuenta_addsy_por_id   ,
     actualizar_suscripcion_tras_pago    ,
-    get_redes_autorizadas_por_sucursal
+    get_redes_autorizadas_por_sucursal,
+    guardar_red_autorizada
 )
 from app.services import security
 from app.services import employee_service
@@ -216,8 +217,9 @@ def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequ
     """
     Función UNIFICADA que se encarga de todo el proceso de verificación:
     1. Valida la ubicación de la terminal usando la nueva lógica de Red Local (LAN).
-    2. Si la red es válida, verifica el estado de la suscripción (activa, vencida, etc.).
-    3. Devuelve la respuesta apropiada (token de acceso, error de ubicación o error de suscripción).
+    2. Si la sucursal no tiene redes, ancla la actual automáticamente.
+    3. Si la red es válida, verifica el estado de la suscripción.
+    4. Devuelve la respuesta apropiada.
     """
     # --- ETAPA 1: VERIFICACIÓN DE RED LOCAL (EL NUEVO SISTEMA) ---
     id_terminal = request_data.id_terminal
@@ -234,9 +236,15 @@ def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequ
     redes_ancladas = get_redes_autorizadas_por_sucursal(id_sucursal_asignada)
     
     coincidencia_encontrada = False
-    # Si no hay redes ancladas para esta sucursal (es el primer inicio), la coincidencia debe fallar
-    # para forzar al administrador a anclar la primera red de confianza.
-    if redes_ancladas:
+
+    # --- ¡NUEVA LÓGICA DE AUTO-ANCLAJE! ---
+    if not redes_ancladas:
+        print(f"📍 Primera conexión para sucursal {id_sucursal_asignada}. Anclando red automáticamente.")
+        # Guardamos la red actual como la primera red de confianza
+        guardar_red_autorizada(id_sucursal_asignada, mac_gateway_actual, ssid_actual)
+        coincidencia_encontrada = True
+    else:
+        # Si ya hay redes, procedemos con la comparación normal
         for red in redes_ancladas:
             if mac_gateway_actual and red['gateway_mac'] == mac_gateway_actual:
                 coincidencia_encontrada = True
@@ -246,7 +254,7 @@ def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequ
                 break
     
     if not coincidencia_encontrada:
-        print(f"⚠️ Conflicto de ubicación para terminal {id_terminal}. La red local no coincide o no hay redes ancladas.")
+        print(f"⚠️ Conflicto de ubicación para terminal {id_terminal}. La red local no coincide.")
         sucursales = get_sucursales_por_cuenta(id_cuenta)
         return {
             "status": "location_mismatch",
@@ -295,6 +303,7 @@ def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequ
             "message": "Tu suscripción ha vencido. Por favor, actualiza tu método de pago.",
             "payment_url": url_portal_pago
         }
+
             
 async def check_activation_status(claim_token: str):
     """
