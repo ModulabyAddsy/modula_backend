@@ -62,26 +62,35 @@ def _debug_db_contents(db_path: str, table_name: str, step: str):
 
 async def recibir_registros_locales_logic(push_request: PushRecordsRequest, current_user: dict):
     """
-    Lógica de sincronización con depuración añadida.
+    Lógica de sincronización que ahora maneja la creación de archivos de DB desde cero.
     """
     key_path = push_request.db_relative_path
-    id_cuenta = current_user['id_cuenta_addsy']
     table_name = push_request.table_name
+    id_cuenta = current_user['id_cuenta_addsy']
     
     print(f"🔄 Sincronizando {len(push_request.records)} registros para '{key_path}'")
     
     db_bytes = descargar_archivo_de_r2(key_path)
-    if not db_bytes:
-        raise HTTPException(status_code=404, detail=f"El archivo '{key_path}' no existe en la nube.")
+    
+    # --- ¡NUEVA LÓGICA INTELIGENTE! ---
+    if db_bytes is None:
+        # Si el archivo no existe en R2, significa que es el primer PUSH.
+        # Buscamos la plantilla vacía para usarla como base.
+        print(f"El archivo '{key_path}' no existe. Creando desde plantilla.")
+        nombre_archivo_plantilla = os.path.basename(key_path)
+        ruta_plantilla = f"_modelo/plantilla_sucursal/{nombre_archivo_plantilla}"
+        db_bytes = descargar_archivo_de_r2(ruta_plantilla)
+        if db_bytes is None:
+            raise HTTPException(status_code=404, detail=f"No se encontró ni el archivo de la empresa ni la plantilla '{ruta_plantilla}'.")
 
+    # A partir de aquí, el proceso es el mismo que antes, pero ahora
+    # garantizamos que 'db_bytes' contiene una base de datos válida (existente o de plantilla).
     temp_file_path = None
     try:
-        # Creamos un archivo temporal y escribimos los datos de la nube en él
         with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tmp_db:
             temp_file_path = tmp_db.name
             tmp_db.write(db_bytes)
 
-        # --- LOG DE DEPURACIÓN 1 ---
         _debug_db_contents(temp_file_path, table_name, "Antes del Merge")
 
         # Conectamos al archivo temporal y aplicamos los cambios

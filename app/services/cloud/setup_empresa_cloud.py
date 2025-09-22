@@ -143,12 +143,23 @@ def listar_archivos_con_metadata(prefix: str) -> list:
     return lista_archivos
 
 def descargar_archivo_de_r2(ruta_cloud_origen: str) -> bytes | None:
-    """Descarga el contenido de un archivo de R2 como bytes."""
+    """
+    Descarga el contenido de un archivo de R2 como bytes.
+    Maneja correctamente el caso 'NoSuchKey' (archivo no encontrado).
+    """
     try:
         response = s3.get_object(Bucket=BUCKET_NAME, Key=ruta_cloud_origen)
         return response['Body'].read()
+    except ClientError as e:
+        # Si el error es 'NoSuchKey', el archivo no existe. Esto es un caso esperado.
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            print(f"ℹ️  El archivo '{ruta_cloud_origen}' no existe aún en R2.")
+            return None # Devolvemos None para que el controlador sepa que no existe.
+        # Para cualquier otro error, lo registramos y fallamos.
+        print(f"❌ Error de Boto3 al descargar {ruta_cloud_origen}: {e}")
+        return None
     except Exception as e:
-        print(f"❌ Error al descargar {ruta_cloud_origen} de R2: {e}")
+        print(f"❌ Error inesperado al descargar {ruta_cloud_origen}: {e}")
         return None
 
 def subir_archivo_a_r2(ruta_cloud_destino: str, contenido_archivo: bytes) -> bool:
