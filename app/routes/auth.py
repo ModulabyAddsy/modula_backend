@@ -39,8 +39,10 @@ async def login(data: LoginData, request: Request): # 1. Añadir 'request: Reque
 # --- Endpoint para la verificación de terminal en el arranque ---
 
 # --- PUNTO DE VERIFICACIÓN UNIFICADO Y CORREGIDO ---
+# --- PUNTO DE VERIFICACIÓN ÚNICO Y OFICIAL ---
 @router.post(
-    "/verificar-terminal", # Usamos la ruta original y principal
+    "/verificar-terminal", # Esta es la ruta que usará toda la aplicación
+    # El modelo de respuesta necesita ser flexible
     response_model=Union[models.TerminalVerificationResponse, dict],
     summary="Verifica una terminal usando red local y comprueba suscripción",
     tags=["Autenticación"]
@@ -52,7 +54,6 @@ def verificar_terminal_route(
     """
     Endpoint único y robusto para la verificación de terminales al arranque.
     """
-    # Llama a la función unificada que ya probamos y funciona.
     return auth_controller.verificar_y_autorizar_terminal(
         request_data=request_data,
         client_ip=request.client.host
