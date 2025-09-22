@@ -686,7 +686,7 @@ def get_changes_since(id_cuenta: int, sync_timestamps: dict) -> dict:
             # El cliente envía un diccionario como {'usuarios': 'timestamp', 'ventas': 'timestamp'}
             # Iteramos sobre cada tabla que el cliente conoce.
             for tabla, ultimo_timestamp_cliente in sync_timestamps.items():
-                
+                print(f"DEBUG BACKEND: Buscando en tabla '{tabla}' cambios posteriores a '{ultimo_timestamp_cliente}'")
                 # Buscamos en el log de cambios
                 cur.execute(
                     """
