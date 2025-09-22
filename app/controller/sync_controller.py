@@ -48,13 +48,25 @@ async def inicializar_sincronizacion_logic(current_user: dict):
         "files_to_pull": files_to_pull
     }
 
+def _debug_db_contents(db_path: str, table_name: str, step: str):
+    """Se conecta a un archivo SQLite y cuenta sus registros para depuración."""
+    if not os.path.exists(db_path):
+        print(f"DEBUG DB ({step}): El archivo no existe.")
+        return
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+    count = cursor.fetchone()[0]
+    conn.close()
+    print(f"DEBUG DB ({step}): La tabla '{table_name}' tiene {count} registros.")
 
 async def recibir_registros_locales_logic(push_request: PushRecordsRequest, current_user: dict):
     """
-    Lógica definitiva de sincronización. Fusiona cambios en SQLite y los registra en PostgreSQL.
+    Lógica de sincronización con depuración añadida.
     """
     key_path = push_request.db_relative_path
     id_cuenta = current_user['id_cuenta_addsy']
+    table_name = push_request.table_name
     
     print(f"🔄 Sincronizando {len(push_request.records)} registros para '{key_path}'")
     
@@ -64,39 +76,50 @@ async def recibir_registros_locales_logic(push_request: PushRecordsRequest, curr
 
     temp_file_path = None
     try:
+        # Creamos un archivo temporal y escribimos los datos de la nube en él
         with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tmp_db:
             temp_file_path = tmp_db.name
             tmp_db.write(db_bytes)
 
+        # --- LOG DE DEPURACIÓN 1 ---
+        _debug_db_contents(temp_file_path, table_name, "Antes del Merge")
+
+        # Conectamos al archivo temporal y aplicamos los cambios
         conn = sqlite3.connect(temp_file_path)
         cursor = conn.cursor()
         
         for record in push_request.records:
-            record['needs_sync'] = 0 # Reseteamos la bandera antes de guardar
+            record['needs_sync'] = 0
             columns = ", ".join(record.keys())
             placeholders = ", ".join(["?"] * len(record))
-            pk_column = "uuid" # Siempre usamos uuid para la consistencia
+            pk_column = "uuid"
             
-            update_assignments = ", ".join([f"{key} = excluded.{key}" for key in record.keys() if key not in [pk_column, 'id', 'needs_sync', 'last_modified']])
+            update_assignments = ", ".join([f"{key} = excluded.{key}" for key in record.keys() if key not in [pk_column, 'id', 'last_modified']])
             
-            # La lógica ON CONFLICT es la clave para evitar duplicados y pérdida de datos
-            sql = (f"INSERT INTO {push_request.table_name} ({columns}) VALUES ({placeholders}) "
+            sql = (f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders}) "
                    f"ON CONFLICT({pk_column}) DO UPDATE SET {update_assignments}, last_modified = excluded.last_modified "
-                   f"WHERE excluded.last_modified > {push_request.table_name}.last_modified;")
+                   f"WHERE excluded.last_modified > {table_name}.last_modified;")
             
             cursor.execute(sql, list(record.values()))
         
         conn.commit()
         conn.close()
 
-        # Después de fusionar en SQLite, registramos los cambios en el log de PostgreSQL
-        guardar_batch_sync_log(id_cuenta, push_request.table_name, push_request.records)
+        # --- LOG DE DEPURACIÓN 2 ---
+        _debug_db_contents(temp_file_path, table_name, "Después del Merge")
 
+        # Leemos los bytes actualizados para subirlos de nuevo
         with open(temp_file_path, "rb") as f:
             updated_db_bytes = f.read()
 
         if not subir_archivo_a_r2(key_path, updated_db_bytes):
             raise HTTPException(status_code=500, detail="Error al resubir la base de datos a R2.")
+
+        # --- LOG DE DEPURACIÓN 3 (Post-subida) ---
+        print("✅ Archivo actualizado y subido a R2.")
+        
+        # Registramos los cambios en el log de PostgreSQL
+        guardar_batch_sync_log(id_cuenta, table_name, push_request.records)
 
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
