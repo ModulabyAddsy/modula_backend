@@ -38,10 +38,11 @@ async def login(data: LoginData, request: Request): # 1. Añadir 'request: Reque
 
 # --- Endpoint para la verificación de terminal en el arranque ---
 
+# --- PUNTO DE VERIFICACIÓN UNIFICADO Y CORREGIDO ---
 @router.post(
-    "/verificar-terminal",
-    response_model=Union[models.TerminalVerificationResponse, models.SubscriptionExpiredResponse, models.LocationMismatchResponse], # Modelo de respuesta flexible
-    summary="Verifica y autoriza una terminal al arranque",
+    "/verificar-terminal", # Usamos la ruta original y principal
+    response_model=Union[models.TerminalVerificationResponse, dict],
+    summary="Verifica una terminal usando red local y comprueba suscripción",
     tags=["Autenticación"]
 )
 def verificar_terminal_route(
@@ -49,9 +50,9 @@ def verificar_terminal_route(
     request: Request 
 ):
     """
-    Endpoint unificado que primero valida la red local y luego la suscripción.
+    Endpoint único y robusto para la verificación de terminales al arranque.
     """
-    # CORREGIDO: Llama a nuestra nueva y única función en el controlador
+    # Llama a la función unificada que ya probamos y funciona.
     return auth_controller.verificar_y_autorizar_terminal(
         request_data=request_data,
         client_ip=request.client.host
@@ -73,25 +74,3 @@ async def pagina_reseteo_route(token: str):
 @router.post("/ejecutar-reseteo", response_class=HTMLResponse)
 async def ejecutar_reseteo_route(request: Request):
     return await auth_controller.ejecutar_reseteo_contrasena(request)
-
-# --- ▼▼▼ NUEVO ENDPOINT SEGURO PARA LA LÓGICA DELTA ▼▼▼ ---
-@router.post(
-    "/verificar-terminal-con-red", # Un nombre nuevo y claro
-    response_model=Union[models.TerminalVerificationResponse, dict], 
-    summary="[NUEVO] Verifica terminal con red local y suscripción",
-    tags=["Autenticación", "Sincronización Delta"]
-)
-def verificar_terminal_con_red_route(
-    request_data: models.TerminalVerificationRequest, 
-    request: Request 
-):
-    """
-    Endpoint dedicado para el nuevo flujo de sincronización delta.
-    Valida la red local (MAC/SSID) y luego la suscripción.
-    """
-    # Llama a la función unificada y robusta que ya creamos
-    return auth_controller.verificar_y_autorizar_terminal(
-        request_data=request_data,
-        client_ip=request.client.host
-    )
-# --- ▲▲▲ FIN DEL NUEVO ENDPOINT ▲▲▲ ---
