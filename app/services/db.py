@@ -674,42 +674,57 @@ def get_redes_autorizadas_por_sucursal(id_sucursal: int) -> list:
             
 def get_changes_since(id_cuenta: int, sync_timestamps: dict) -> dict:
     """
-    Busca en la tabla sync_log los registros más nuevos que los timestamps
-    proporcionados por el cliente para devolver un paquete de cambios (delta).
+    Busca en la tabla sync_log todos los registros de una cuenta que sean más
+    nuevos que el último timestamp de sincronización exitosa del cliente.
     """
     changes = {}
     conn = get_connection()
-    if not conn: return {}
+    if not conn: 
+        return {"deltas": {}, "server_sync_timestamp": None}
 
     try:
         with conn.cursor() as cur:
-            for tabla, ultimo_timestamp_cliente in sync_timestamps.items():
-                print(f"DEBUG BACKEND: Buscando en tabla '{tabla}' cambios posteriores a '{ultimo_timestamp_cliente}'")
-                
-                # --- ▼▼▼ AQUÍ ESTÁ LA CORRECCIÓN FINAL Y DEFINITIVA ▼▼▼ ---
-                # Añadimos '::timestamptz' para forzar una conversión de tipo explícita en PostgreSQL.
-                # Esto elimina cualquier ambigüedad de precisión y asegura una comparación estricta.
-                cur.execute(
-                    """
-                    SELECT DISTINCT ON (uuid_registro) * FROM sync_log
-                    WHERE id_cuenta_addsy = %s 
-                      AND tabla_modificada = %s 
-                      AND fecha_modificacion > %s::timestamptz 
-                    ORDER BY uuid_registro, fecha_modificacion DESC;
-                    """,
-                    (id_cuenta, tabla, ultimo_timestamp_cliente)
-                )
-                # --- ▲▲▲ FIN DE LA CORRECCIÓN ▲▲▲ ---
-                
-                nuevos_registros = cur.fetchall()
-                if nuevos_registros:
-                    changes[tabla] = [row['datos_registro'] for row in nuevos_registros]
+            # 1. Obtenemos la hora actual del servidor. Este será el nuevo marcador.
+            cur.execute("SELECT NOW();")
+            server_timestamp = cur.fetchone()['now']
+
+            # 2. Extraemos el único timestamp global que envía el cliente.
+            ultimo_timestamp_cliente = sync_timestamps.get("global", "1970-01-01T00:00:00+00:00")
+            print(f"DEBUG BACKEND: Buscando cambios para la cuenta {id_cuenta} posteriores a '{ultimo_timestamp_cliente}'")
+
+            # 3. Ejecutamos UNA sola consulta para obtener TODOS los cambios de la cuenta.
+            #    Hemos quitado "AND tabla_modificada = %s" para buscar en todas las tablas.
+            cur.execute(
+                """
+                SELECT DISTINCT ON (uuid_registro) * FROM sync_log
+                WHERE id_cuenta_addsy = %s 
+                  AND fecha_modificacion > %s::timestamptz
+                ORDER BY uuid_registro, fecha_modificacion DESC;
+                """,
+                (id_cuenta, ultimo_timestamp_cliente)
+            )
+            
+            todos_los_cambios = cur.fetchall()
+
+            # 4. Agrupamos los resultados por tabla antes de enviarlos.
+            for registro in todos_los_cambios:
+                tabla = registro['tabla_modificada']
+                if tabla not in changes:
+                    changes[tabla] = []
+                changes[tabla].append(registro['datos_registro'])
+            
+            # 5. Devolvemos el paquete completo.
+            return {
+                "deltas": changes,
+                "server_sync_timestamp": server_timestamp.isoformat()
+            }
+            
     except Exception as e:
         print(f"🔥🔥 ERROR obteniendo deltas desde sync_log: {e}")
+        return {"deltas": {}, "server_sync_timestamp": None}
     finally:
-        if conn: conn.close()
-        
-    return changes
+        if conn: 
+            conn.close()
 
 
 def guardar_batch_sync_log(id_cuenta: int, tabla: str, registros: list):
