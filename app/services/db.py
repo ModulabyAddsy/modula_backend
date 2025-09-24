@@ -683,25 +683,26 @@ def get_changes_since(id_cuenta: int, sync_timestamps: dict) -> dict:
 
     try:
         with conn.cursor() as cur:
-            # El cliente envía un diccionario como {'usuarios': 'timestamp', 'ventas': 'timestamp'}
-            # Iteramos sobre cada tabla que el cliente conoce.
             for tabla, ultimo_timestamp_cliente in sync_timestamps.items():
                 print(f"DEBUG BACKEND: Buscando en tabla '{tabla}' cambios posteriores a '{ultimo_timestamp_cliente}'")
-                # Buscamos en el log de cambios
+                
+                # --- ▼▼▼ AQUÍ ESTÁ LA CORRECCIÓN FINAL Y DEFINITIVA ▼▼▼ ---
+                # Añadimos '::timestamptz' para forzar una conversión de tipo explícita en PostgreSQL.
+                # Esto elimina cualquier ambigüedad de precisión y asegura una comparación estricta.
                 cur.execute(
                     """
                     SELECT DISTINCT ON (uuid_registro) * FROM sync_log
                     WHERE id_cuenta_addsy = %s 
                       AND tabla_modificada = %s 
-                      AND fecha_modificacion > %s
+                      AND fecha_modificacion > %s::timestamptz 
                     ORDER BY uuid_registro, fecha_modificacion DESC;
                     """,
                     (id_cuenta, tabla, ultimo_timestamp_cliente)
                 )
+                # --- ▲▲▲ FIN DE LA CORRECCIÓN ▲▲▲ ---
                 
                 nuevos_registros = cur.fetchall()
                 if nuevos_registros:
-                    # Extraemos solo los datos del registro para enviarlos al cliente
                     changes[tabla] = [row['datos_registro'] for row in nuevos_registros]
     except Exception as e:
         print(f"🔥🔥 ERROR obteniendo deltas desde sync_log: {e}")
@@ -709,6 +710,7 @@ def get_changes_since(id_cuenta: int, sync_timestamps: dict) -> dict:
         if conn: conn.close()
         
     return changes
+
 
 def guardar_batch_sync_log(id_cuenta: int, tabla: str, registros: list):
     """
