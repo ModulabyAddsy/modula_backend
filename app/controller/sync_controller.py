@@ -37,15 +37,13 @@ async def inicializar_sincronizacion_logic(current_user: dict):
     await stage_2_migrate_cloud_schemas(id_empresa, ruta_cloud_sucursal)
     print("✅ Etapa 2: Esquemas de bases de datos en la nube verificados y migrados.")
 
-    ruta_datos_generales = f"{id_empresa}/databases_generales/"
-    archivos_generales = listar_archivos_con_metadata(ruta_datos_generales)
-    archivos_sucursal = listar_archivos_con_metadata(ruta_cloud_sucursal)
-    files_to_pull = [f['key'] for f in archivos_generales] + [f['key'] for f in archivos_sucursal]
-    
+    # --- CAMBIO CLAVE: YA NO ENVIAMOS 'files_to_pull' ---
+    # Al no enviar esta lista, el cliente no intentará descargar los archivos completos
+    # y pasará directamente a la sincronización delta.
     return {
         "status": "cloud_ready",
         "id_empresa": id_empresa,
-        "files_to_pull": files_to_pull
+        "files_to_pull": [] # Devolvemos una lista vacía
     }
 
 def _debug_db_contents(db_path: str, table_name: str, step: str):
