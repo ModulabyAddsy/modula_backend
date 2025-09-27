@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # Importamos los módulos de rutas de la aplicación.
-from app.routes import auth, terminal, suscripcion_routes, sucursales, sync, stripe_routes, update
+from app.routes import auth, terminal, suscripcion_routes, sucursales, sync, stripe_routes, update, modules
 
 app = FastAPI(
     title="Modula Backend v2",
@@ -40,6 +40,8 @@ app.include_router(stripe_routes.router, tags=["Stripe Webhooks"])
 # ✅ RUTAS CORREGIDAS PARA EL PREFIJO '/api/v1'
 app.include_router(sync.router, prefix="/api/v1/sync", tags=["Sincronización"])
 app.include_router(update.router, prefix="/api/v1/update", tags=["Update"])
+
+app.include_router(modules.router, prefix="/api/v1/modules", tags=["Modules"])
 
 @app.get("/")
 def root():
