@@ -57,26 +57,28 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
         else:
             print(f"ℹ️ Webhook 'checkout.session.completed' para {correo} ignorado (estado no es 'pendiente_pago').")
 
-    # --- MANEJADOR PARA PAGOS RECURRENTES EXITOSOS ---
+    # --- MANEJADOR PARA PAGOS RECURRENTES EXITOSOS (CORREGIDO) ---
     elif event["type"] == "invoice.paid":
-        # La línea clave: nos aseguramos de trabajar con el objeto anidado.
         invoice = event["data"]["object"]
+        
+        # Extraemos los datos usando las rutas CORRECTAS que vimos en el log
+        estado_pago = invoice.get("status")
+        # Accedemos de forma segura a los datos anidados
+        id_suscripcion_stripe = invoice.get('parent', {}).get('subscription_details', {}).get('subscription')
 
         # LOG DE DEPURACIÓN (ahora mostrará los valores correctos)
         print("--- DEBUG WEBHOOK 'invoice.paid' ---")
-        print(f"Paid: {invoice.get('paid')}")
-        print(f"Subscription ID: {invoice.get('subscription')}")
+        print(f"Status: {estado_pago}")
+        print(f"Subscription ID: {id_suscripcion_stripe}")
         print("------------------------------------")
-        print(f"DEBUG: Contenido completo del objeto 'invoice': {invoice}")
         
-        # Esta condición ahora debería ser verdadera
-        if invoice.get("paid") and invoice.get("subscription"):
-            stripe_sub_id = invoice.get("subscription")
+        # La condición ahora sí se cumplirá
+        if estado_pago == "paid" and id_suscripcion_stripe:
             nuevo_periodo_fin_ts = invoice.get("period_end")
-
-            # Llamamos a la función de la base de datos para actualizar el estado
-            actualizar_suscripcion_tras_pago(stripe_sub_id, nuevo_periodo_fin_ts)
+            
+            # Llamamos a nuestra función de DB para actualizar el estado
+            actualizar_suscripcion_tras_pago(id_suscripcion_stripe, nuevo_periodo_fin_ts)
         else:
-            print("ℹ️ Webhook 'invoice.paid' ignorado (no está pagado o no es de una suscripción).")
+            print("ℹ️ Webhook 'invoice.paid' ignorado (estado no es 'paid' o no es de una suscripción).")
 
     return {"status": "ok"}
