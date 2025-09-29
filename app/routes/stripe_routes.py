@@ -67,7 +67,8 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
         print(f"Paid: {invoice.get('paid')}")
         print(f"Subscription ID: {invoice.get('subscription')}")
         print("------------------------------------")
-
+        print(f"DEBUG: Contenido completo del objeto 'invoice': {invoice}")
+        
         # Esta condición ahora debería ser verdadera
         if invoice.get("paid") and invoice.get("subscription"):
             stripe_sub_id = invoice.get("subscription")
