@@ -59,21 +59,21 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
 
     # --- MANEJADOR PARA PAGOS RECURRENTES EXITOSOS ---
     elif event["type"] == "invoice.paid":
+        # La línea clave: nos aseguramos de trabajar con el objeto anidado.
         invoice = event["data"]["object"]
-        
-        # LOG DE DEPURACIÓN
+
+        # LOG DE DEPURACIÓN (ahora mostrará los valores correctos)
         print("--- DEBUG WEBHOOK 'invoice.paid' ---")
         print(f"Paid: {invoice.get('paid')}")
         print(f"Subscription ID: {invoice.get('subscription')}")
         print("------------------------------------")
-        
-        # Nos aseguramos de que el pago fue exitoso y está asociado a una suscripción
+
+        # Esta condición ahora debería ser verdadera
         if invoice.get("paid") and invoice.get("subscription"):
             stripe_sub_id = invoice.get("subscription")
-            # El 'period_end' de Stripe es un timestamp (número de segundos desde 1970)
             nuevo_periodo_fin_ts = invoice.get("period_end")
-            
-            # Llamamos a nuestra nueva función de DB para actualizar el estado
+
+            # Llamamos a la función de la base de datos para actualizar el estado
             actualizar_suscripcion_tras_pago(stripe_sub_id, nuevo_periodo_fin_ts)
         else:
             print("ℹ️ Webhook 'invoice.paid' ignorado (no está pagado o no es de una suscripción).")
