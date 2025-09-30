@@ -850,18 +850,22 @@ def get_suscripcion_por_cuenta_id(id_cuenta: int):
     """
     sql = "SELECT * FROM suscripciones_software WHERE id_cuenta_addsy = %s;"
     conn = get_connection()
-    if not conn: return None
+    if not conn: 
+        return None
     try:
-        # Usamos dict_cursor para que el resultado sea un diccionario
+        # Usamos DictCursor para que el resultado sea un diccionario en lugar de una tupla.
+        # Esta es la forma estándar y recomendada de hacerlo con psycopg2.
         with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
             cur.execute(sql, (id_cuenta,))
             suscripcion = cur.fetchone()
+            # Devolvemos el resultado como un diccionario estándar de Python si se encontró algo.
             return dict(suscripcion) if suscripcion else None
     except Exception as e:
         print(f"🔥🔥 ERROR al obtener suscripción por ID de cuenta: {e}")
         return None
     finally:
-        if conn: conn.close()
+        if conn: 
+            conn.close()
 
 def actualizar_suscripcion_desde_stripe(id_suscripcion_stripe: str, datos_stripe: dict):
     """
