@@ -51,8 +51,15 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
     Paso 1 del flujo: Valida el correo, pre-registra la cuenta en la BD
     y crea una sesión de pago en Stripe.
     """
+    # --- 👇 NUEVO BLOQUE DE VALIDACIÓN ---
+    # Verificamos la longitud de la contraseña en bytes, que es lo que le importa a bcrypt.
+    if len(data.contrasena.encode('utf-8')) > 72:
+        raise HTTPException(
+            status_code=400,
+            detail="La contraseña es demasiado larga. Por favor, elige una con 72 caracteres o menos."
+        )
+    # --- ----------------------------- ---
 
-    # Estandarizamos el correo a minúsculas para buscar y guardar.
     correo_lower = data.correo.lower().strip()
 
     cuenta_existente = buscar_cuenta_addsy_por_correo(correo_lower)
@@ -60,11 +67,7 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
         raise HTTPException(status_code=400, detail="Este correo ya está en uso.")
 
     nuevo_usuario_data = data.dict()
-
-    # ✨ CAMBIO 1: Sobrescribimos el correo en los datos a guardar
-    # con su versión en minúsculas. Esto asegura que en la BD siempre esté estandarizado.
     nuevo_usuario_data['correo'] = correo_lower
-
     nuevo_usuario_data['contrasena_hash'] = hash_contrasena(data.contrasena)
 
     cuenta_id = crear_cuenta_addsy(nuevo_usuario_data)
@@ -76,7 +79,6 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
     try:
         checkout_session = await crear_sesion_checkout_para_registro(
             nombre_completo=data.nombre_completo,
-            # ✨ CAMBIO 2: Enviamos a Stripe el correo ya estandarizado en minúsculas.
             correo=correo_lower,
             id_terminal=data.id_terminal,
             aplica_prueba=True
