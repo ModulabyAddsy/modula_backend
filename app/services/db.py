@@ -1,7 +1,6 @@
 # app/services/db.py
 import os
 import psycopg
-import psycopg2.extras
 from psycopg.rows import dict_row
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone # Asegúrate de importar timezone
@@ -846,20 +845,24 @@ def actualizar_estado_suscripcion(id_suscripcion_stripe: str, nuevo_estado: str)
         
 def get_suscripcion_por_cuenta_id(id_cuenta: int):
     """
-    Obtiene los detalles de la suscripción de la base de datos local para una cuenta específica.
+    Obtiene los detalles de la suscripción.
+    Versión corregida para psycopg (v3).
     """
     sql = "SELECT * FROM suscripciones_software WHERE id_cuenta_addsy = %s;"
+    
+    # Tu función get_connection() ya configura la conexión para que devuelva diccionarios.
     conn = get_connection()
     if not conn: 
         return None
+    
     try:
-        # Usamos DictCursor para que el resultado sea un diccionario en lugar de una tupla.
-        # Esta es la forma estándar y recomendada de hacerlo con psycopg2.
-        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        # Ya no necesitamos especificar nada en el cursor.
+        with conn.cursor() as cur:
             cur.execute(sql, (id_cuenta,))
+            # El resultado de fetchone() ya será un diccionario gracias a tu get_connection().
             suscripcion = cur.fetchone()
-            # Devolvemos el resultado como un diccionario estándar de Python si se encontró algo.
-            return dict(suscripcion) if suscripcion else None
+            return suscripcion
+            
     except Exception as e:
         print(f"🔥🔥 ERROR al obtener suscripción por ID de cuenta: {e}")
         return None
