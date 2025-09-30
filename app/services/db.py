@@ -1,6 +1,7 @@
 # app/services/db.py
 import os
 import psycopg
+import psycopg2.extras
 from psycopg.rows import dict_row
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone # Asegúrate de importar timezone
@@ -765,3 +766,133 @@ def guardar_batch_sync_log(id_cuenta: int, tabla: str, registros: list):
     finally:
         if conn:
             conn.close()
+            
+def registrar_pago_fallido(datos_fallo: dict):
+    """
+    Inserta o actualiza un registro en la tabla de pagos_fallidos.
+    Si ya existe un fallo para esa suscripción, actualiza los detalles.
+    """
+    sql = """
+    INSERT INTO pagos_fallidos (
+        id_cuenta_addsy, id_suscripcion_stripe, monto_debido, moneda,
+        motivo_fallo, url_factura_stripe, fecha_ultimo_intento
+    ) VALUES (%(id_cuenta_addsy)s, %(id_suscripcion_stripe)s, %(monto_debido)s, %(moneda)s,
+              %(motivo_fallo)s, %(url_factura_stripe)s, NOW())
+    ON CONFLICT (id_suscripcion_stripe) DO UPDATE SET
+        monto_debido = EXCLUDED.monto_debido,
+        motivo_fallo = EXCLUDED.motivo_fallo,
+        url_factura_stripe = EXCLUDED.url_factura_stripe,
+        fecha_ultimo_intento = NOW();
+    """
+    conn = get_connection()
+    if not conn: return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, datos_fallo)
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"🔥🔥 ERROR al registrar pago fallido: {e}")
+        conn.rollback()
+        return False
+    finally:
+        if conn: conn.close()
+
+def resolver_pago_fallido(id_suscripcion_stripe: str):
+    """
+    Elimina un registro de la tabla de pagos_fallidos.
+    Se llama cuando un pago se realiza exitosamente.
+    """
+    sql = "DELETE FROM pagos_fallidos WHERE id_suscripcion_stripe = %s;"
+    conn = get_connection()
+    if not conn: return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (id_suscripcion_stripe,))
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"🔥🔥 ERROR al resolver pago fallido: {e}")
+        conn.rollback()
+        return False
+    finally:
+        if conn: conn.close()
+
+def actualizar_estado_suscripcion(id_suscripcion_stripe: str, nuevo_estado: str):
+    """
+    Actualiza el estado de una suscripción en la tabla suscripciones_software.
+    Devuelve el id_cuenta_addsy asociado para poder encadenar acciones.
+    """
+    sql = """
+    UPDATE suscripciones_software
+    SET estado_suscripcion = %s
+    WHERE id_suscripcion_stripe = %s
+    RETURNING id_cuenta_addsy;
+    """
+    conn = get_connection()
+    if not conn: return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (nuevo_estado, id_suscripcion_stripe))
+            resultado = cur.fetchone()
+            conn.commit()
+            return resultado['id_cuenta_addsy'] if resultado else None
+    except Exception as e:
+        print(f"🔥🔥 ERROR al actualizar estado de suscripción: {e}")
+        conn.rollback()
+        return None
+    finally:
+        if conn: conn.close()
+        
+def get_suscripcion_por_cuenta_id(id_cuenta: int):
+    """
+    Obtiene los detalles de la suscripción de la base de datos local para una cuenta específica.
+    """
+    sql = "SELECT * FROM suscripciones_software WHERE id_cuenta_addsy = %s;"
+    conn = get_connection()
+    if not conn: return None
+    try:
+        # Usamos dict_cursor para que el resultado sea un diccionario
+        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            cur.execute(sql, (id_cuenta,))
+            suscripcion = cur.fetchone()
+            return dict(suscripcion) if suscripcion else None
+    except Exception as e:
+        print(f"🔥🔥 ERROR al obtener suscripción por ID de cuenta: {e}")
+        return None
+    finally:
+        if conn: conn.close()
+
+def actualizar_suscripcion_desde_stripe(id_suscripcion_stripe: str, datos_stripe: dict):
+    """
+    Actualiza una suscripción local con datos frescos obtenidos de la API de Stripe.
+    """
+    # Mapeamos el estado de Stripe a nuestro ENUM
+    estado_mapeado = datos_stripe['status']
+    if estado_mapeado == 'active': estado_mapeado = 'activa'
+    elif estado_mapeado == 'trialing': estado_mapeado = 'prueba_gratis'
+    elif estado_mapeado in ['past_due', 'unpaid']: estado_mapeado = 'vencida'
+    elif estado_mapeado == 'canceled': estado_mapeado = 'cancelada'
+    else: estado_mapeado = 'incompleta' # Default para otros estados como 'incomplete'
+        
+    fecha_fin_periodo = datetime.fromtimestamp(datos_stripe['period_end_ts'], tz=timezone.utc)
+    
+    sql = """
+    UPDATE suscripciones_software
+    SET estado_suscripcion = %s,
+        periodo_fin = %s
+    WHERE id_suscripcion_stripe = %s;
+    """
+    conn = get_connection()
+    if not conn: return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (estado_mapeado, fecha_fin_periodo, id_suscripcion_stripe))
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"🔥🔥 ERROR al actualizar suscripción desde Stripe: {e}")
+        conn.rollback()
+        return False
+    finally:
+        if conn: conn.close()

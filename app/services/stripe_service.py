@@ -31,7 +31,9 @@ async def crear_sesion_checkout_para_registro(nombre_completo: str, correo: str,
         # 2. Definir los argumentos para la sesión de pago.
         session_args = {
             "customer": cliente.id,
-            "payment_method_types": ["card"],
+            # --- 👇 EL ÚNICO CAMBIO ESTÁ AQUÍ ---
+            "payment_method_types": ["card", "oxxo"],
+            # --- ----------------------------- ---
             "line_items": [
                 {
                     "price": BASE_PLAN_PRICE_ID,
@@ -40,13 +42,10 @@ async def crear_sesion_checkout_para_registro(nombre_completo: str, correo: str,
             ],
             "mode": "subscription",
             # URLs a las que Stripe redirigirá al usuario después del pago.
-            # Es buena práctica que sean páginas de tu sitio web, no del backend.
             "success_url": "https://addsy.mx/pago-exitoso?session_id={CHECKOUT_SESSION_ID}",
             "cancel_url": "https://addsy.mx/pago-cancelado",
             
             # --- METADATOS CRÍTICOS ---
-            # Esta es la información que Stripe nos devolverá en el webhook.
-            # Con el 'correo_usuario', podremos encontrarlo en nuestra base de datos.
             "metadata": {
                 "correo_usuario": correo,
                 "id_terminal": id_terminal

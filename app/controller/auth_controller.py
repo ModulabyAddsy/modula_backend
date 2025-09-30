@@ -32,15 +32,17 @@ from app.services.db import (
     resetear_contrasena_con_token, buscar_cuenta_addsy_por_id   ,
     actualizar_suscripcion_tras_pago    ,
     get_redes_autorizadas_por_sucursal,
-    guardar_red_autorizada
+    guardar_red_autorizada,
+    get_suscripcion_por_cuenta_id, 
+    actualizar_suscripcion_desde_stripe
 )
 from app.services import security
-from app.services import employee_service
-from app.services.employee_service import anadir_primer_administrador
+#from app.services import employee_service
+#from app.services.employee_service import anadir_primer_administrador
 from app.services.cloud.setup_empresa_cloud import subir_archivo_db
 from app.services.utils import generar_contrasena_temporal, generar_token_verificacion
 from app.services.mail import enviar_correo_credenciales, enviar_correo_reseteo
-
+from datetime import datetime, timezone
 #COMENTARIO PARA SUBIR A GITHUB
 
 # --- 1. REGISTRO Y PAGO ---
@@ -218,10 +220,10 @@ def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequ
     Función UNIFICADA que se encarga de todo el proceso de verificación:
     1. Valida la ubicación de la terminal usando la nueva lógica de Red Local (LAN).
     2. Si la sucursal no tiene redes, ancla la actual automáticamente.
-    3. Si la red es válida, verifica el estado de la suscripción.
+    3. Si la red es válida, realiza una verificación de suscripción proactiva y auto-corregible.
     4. Devuelve la respuesta apropiada.
     """
-    # --- ETAPA 1: VERIFICACIÓN DE RED LOCAL (EL NUEVO SISTEMA) ---
+    # --- ETAPA 1: VERIFICACIÓN DE RED LOCAL (LÓGICA ORIGINAL INTACTA) ---
     id_terminal = request_data.id_terminal
     mac_gateway_actual = request_data.gateway_mac
     ssid_actual = request_data.ssid
@@ -237,14 +239,11 @@ def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequ
     
     coincidencia_encontrada = False
 
-    # --- ¡NUEVA LÓGICA DE AUTO-ANCLAJE! ---
     if not redes_ancladas:
         print(f"📍 Primera conexión para sucursal {id_sucursal_asignada}. Anclando red automáticamente.")
-        # Guardamos la red actual como la primera red de confianza
         guardar_red_autorizada(id_sucursal_asignada, mac_gateway_actual, ssid_actual)
         coincidencia_encontrada = True
     else:
-        # Si ya hay redes, procedemos con la comparación normal
         for red in redes_ancladas:
             if mac_gateway_actual and red['gateway_mac'] == mac_gateway_actual:
                 coincidencia_encontrada = True
@@ -262,11 +261,34 @@ def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequ
             "sucursales_existentes": [models.SucursalInfo(**s) for s in sucursales]
         }
 
-    # --- ETAPA 2: VERIFICACIÓN DE SUSCRIPCIÓN (SI LA RED ES VÁLIDA) ---
+    # --- ✅ ETAPA 2: VERIFICACIÓN DE SUSCRIPCIÓN (NUEVA LÓGICA REFORZADA) ---
     print(f"✅ Red local verificada para terminal {id_terminal}. Procediendo a verificar suscripción.")
-    suscripcion = actualizar_y_verificar_suscripcion(id_cuenta)
     
-    if suscripcion and suscripcion['estado_suscripcion'] in ['activa', 'prueba_gratis']:
+    # 1. Obtenemos la suscripción de NUESTRA base de datos (nuestra "caché")
+    suscripcion_local = get_suscripcion_por_cuenta_id(id_cuenta)
+    
+    if not suscripcion_local:
+         raise HTTPException(status_code=404, detail="No se encontró una suscripción asociada a esta cuenta.")
+
+    # 2. Comprobamos si la fecha de vencimiento ya pasó, según nuestros datos
+    ahora_ts = int(datetime.now(timezone.utc).timestamp())
+    # Hacemos una conversión segura del timestamp de la BD
+    vencimiento_ts = int(suscripcion_local.get('periodo_fin').timestamp()) if suscripcion_local.get('periodo_fin') else 0
+
+    # 3. SI la fecha ya pasó Y nuestro estado aún es 'activa' o 'prueba_gratis',
+    #    entonces SOSPECHAMOS que la BD está desactualizada y consultamos a Stripe.
+    if ahora_ts > vencimiento_ts and suscripcion_local.get('estado_suscripcion') in ['activa', 'prueba_gratis']:
+        print(f"⚠️ Posible desactualización para cuenta {id_cuenta}. Verificando estado real con Stripe...")
+        id_suscripcion_stripe = suscripcion_local.get('id_suscripcion_stripe')
+        
+        estado_real_stripe = get_subscription_status_from_stripe(id_suscripcion_stripe)
+        
+        if estado_real_stripe:
+            actualizar_suscripcion_desde_stripe(id_suscripcion_stripe, estado_real_stripe)
+            suscripcion_local = get_suscripcion_por_cuenta_id(id_cuenta) # Recargamos los datos
+
+    # 4. Ahora, 'suscripcion_local' es fiable. Procedemos a autorizar o denegar.
+    if suscripcion_local and suscripcion_local['estado_suscripcion'] in ['activa', 'prueba_gratis']:
         print(f"✅ Suscripción activa para cuenta {id_cuenta}. Generando token.")
         actualizar_ip_terminal(id_terminal, client_ip)
         actualizar_contadores_suscripcion(id_cuenta)
@@ -286,10 +308,10 @@ def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequ
             nombre_empresa=terminal["nombre_empresa"],
             id_sucursal=terminal["id_sucursal"],
             nombre_sucursal=terminal["nombre_sucursal"],
-            estado_suscripcion=suscripcion['estado_suscripcion']
+            estado_suscripcion=suscripcion_local['estado_suscripcion']
         )
     else:
-        print(f"🚨 Suscripción vencida para cuenta {id_cuenta}. Generando portal de pago.")
+        print(f"🚨 Suscripción no activa para cuenta {id_cuenta} (Estado: {suscripcion_local.get('estado_suscripcion')}). Generando portal de pago.")
         cuenta_info = buscar_cuenta_addsy_por_id(id_cuenta)
         stripe_customer_id = cuenta_info.get("id_cliente_stripe")
 
@@ -303,6 +325,7 @@ def verificar_y_autorizar_terminal(request_data: models.TerminalVerificationRequ
             "message": "Tu suscripción ha vencido. Por favor, actualiza tu método de pago.",
             "payment_url": url_portal_pago
         }
+
 
             
 async def check_activation_status(claim_token: str):
