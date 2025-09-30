@@ -32,7 +32,7 @@ async def crear_sesion_checkout_para_registro(nombre_completo: str, correo: str,
         session_args = {
             "customer": cliente.id,
             # --- 👇 EL ÚNICO CAMBIO ESTÁ AQUÍ ---
-            "payment_method_types": ["card", "oxxo"],
+            "payment_method_types": ["card"],
             # --- ----------------------------- ---
             "line_items": [
                 {

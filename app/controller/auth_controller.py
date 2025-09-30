@@ -84,6 +84,7 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
         return {"url_checkout": checkout_session.url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al contactar con el servicio de pago: {e}")
+    
 # --- 2. INICIO DE SESIÓN ---
 async def login_para_access_token(form_data: LoginData, client_ip: str) -> Token:
     """
