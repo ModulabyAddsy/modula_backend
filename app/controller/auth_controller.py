@@ -53,6 +53,7 @@ async def registrar_cuenta_y_crear_pago(data: RegistroCuenta):
     """
     # --- 👇 NUEVO BLOQUE DE VALIDACIÓN ---
     # Verificamos la longitud de la contraseña en bytes, que es lo que le importa a bcrypt.
+    print("--- ✅ EJECUTANDO VERSIÓN CON VALIDACIÓN DE CONTRASEÑA ---")
     if len(data.contrasena.encode('utf-8')) > 72:
         raise HTTPException(
             status_code=400,
