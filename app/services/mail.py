@@ -1,29 +1,52 @@
 # app/services/mail.py
-import smtplib
 import os
 from dotenv import load_dotenv
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-import ssl
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
 load_dotenv()
 
-EMAIL_USER = os.getenv("EMAIL_USER")
-EMAIL_PASS = os.getenv("EMAIL_PASS")
+# --- Nuevas variables de entorno para SendGrid ---
+SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY')
+MAIL_FROM_EMAIL = os.getenv('MAIL_FROM_EMAIL')
 
-# --- Configuración leída desde .env ---
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+# --- Función auxiliar interna ---
+def _enviar_correo(destinatario: str, asunto: str, cuerpo_html: str) -> bool:
+    """
+    Función auxiliar que maneja la lógica de envío de correos usando SendGrid.
+    """
+    if not all([SENDGRID_API_KEY, MAIL_FROM_EMAIL]):
+        print("⚠️ Faltan variables de entorno (SENDGRID_API_KEY o MAIL_FROM_EMAIL). Se omitirá el envío.")
+        return False
 
+    mensaje = Mail(
+        from_email=MAIL_FROM_EMAIL,
+        to_emails=destinatario,
+        subject=asunto,
+        html_content=cuerpo_html
+    )
+    try:
+        sendgrid_client = SendGridAPIClient(SENDGRID_API_KEY)
+        response = sendgrid_client.send(mensaje)
+        
+        # Un código de respuesta 2xx indica éxito en la API de SendGrid
+        if 200 <= response.status_code < 300:
+            print(f"✅ Correo enviado a {destinatario} a través de SendGrid. Estado: {response.status_code}")
+            return True
+        else:
+            print(f"❌ Error de SendGrid. Estado: {response.status_code}. Cuerpo: {response.body}")
+            return False
+    except Exception as e:
+        print(f"🔥🔥 ERROR CRÍTICO al enviar correo con SendGrid: {e}")
+        return False
+
+# --- Funciones públicas ---
 
 def enviar_correo_verificacion(destinatario, nombre_usuario, token, id_terminal, id_stripe_session):
     """
-    Envía un correo con un enlace de verificación que ahora incluye todos los IDs necesarios.
+    Envía el correo de verificación de cuenta usando SendGrid.
     """
-
-    # La URL correcta debe incluir el prefijo /auth/
     enlace = f"https://modula-backend.onrender.com/api/v1/auth/verificar-cuenta?token={token}&id_terminal={id_terminal}&session_id={id_stripe_session}"
-
     asunto = "Verifica tu cuenta Addsy 🚀"
     cuerpo_html = f"""
     <html>
@@ -40,37 +63,14 @@ def enviar_correo_verificacion(destinatario, nombre_usuario, token, id_terminal,
     </body>
     </html>
     """
-    
-    mensaje = MIMEMultipart("alternative")
-    mensaje["Subject"] = asunto
-    mensaje["From"] = EMAIL_USER
-    mensaje["To"] = destinatario
-    mensaje.attach(MIMEText(cuerpo_html, "html"))
+    return _enviar_correo(destinatario, asunto, cuerpo_html)
 
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(EMAIL_USER, EMAIL_PASS)
-            server.sendmail(EMAIL_USER, destinatario, mensaje.as_string())
-            print(f"📧 Correo enviado a {destinatario}")
-    except Exception as e:
-        print(f"❌ Error al enviar correo: {e}")
-        
 def enviar_correo_credenciales(destinatario: str, nombre_usuario: str, username_empleado: str, contrasena_temporal: str):
     """
-    Envía las credenciales de acceso iniciales al propietario de la cuenta.
+    Envía las credenciales de acceso iniciales usando SendGrid.
     """
-    if not all([SMTP_SERVER, SMTP_PORT, EMAIL_USER, EMAIL_PASS]):
-        print("⚠️  Faltan variables de entorno para el envío de correo. Se omitirá el envío real.")
-        return
-
-    # --- Creación del Mensaje ---
-    mensaje = MIMEMultipart("alternative")
-    mensaje["Subject"] = "¡Bienvenido a Modula! Tus Credenciales de Acceso"
-    mensaje["From"] = f"Addsy <{EMAIL_USER}>"
-    mensaje["To"] = destinatario
-
-    # --- Contenido del Correo en formato HTML ---
-    html = f"""
+    asunto = "¡Bienvenido a Modula! Tus Credenciales de Acceso"
+    cuerpo_html = f"""
     <html>
       <body style="font-family: Arial, sans-serif; color: #333;">
         <h2>¡Hola {nombre_usuario}, bienvenido a Modula POS!</h2>
@@ -86,40 +86,15 @@ def enviar_correo_credenciales(destinatario: str, nombre_usuario: str, username_
       </body>
     </html>
     """
+    return _enviar_correo(destinatario, asunto, cuerpo_html)
 
-    # Adjuntar el contenido HTML al mensaje
-    parte_html = MIMEText(html, "html")
-    mensaje.attach(parte_html)
-
-    # --- Envío del Correo ---
-    contexto_ssl = ssl.create_default_context()
-    try:
-        # Usamos smtplib.SMTP para TLS, que es más común que SMTPS_SSL directo
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls(context=contexto_ssl)
-            server.login(EMAIL_USER, EMAIL_PASS)
-            server.sendmail(EMAIL_USER, destinatario, mensaje.as_string())
-        print(f"✅ Correo de credenciales enviado exitosamente a {destinatario}.")
-    except Exception as e:
-        print(f"🔥🔥 ERROR al enviar correo de credenciales: {e}")
-        
 def enviar_correo_reseteo(destinatario: str, nombre_usuario: str, token: str):
     """
-    Envía un correo con el enlace para restablecer la contraseña de la cuenta Addsy.
+    Envía el correo para restablecer la contraseña usando SendGrid.
     """
-    if not all([SMTP_SERVER, SMTP_PORT, EMAIL_USER, EMAIL_PASS]):
-        print("⚠️  Faltan variables de entorno para el envío de correo. Se omitirá el envío real.")
-        return
-
-    # --- Creación del Mensaje ---
     enlace = f"https://modula-backend.onrender.com/api/v1/auth/pagina-reseteo?token={token}"
-    mensaje = MIMEMultipart("alternative")
-    mensaje["Subject"] = "Restablece tu contraseña de Modula"
-    mensaje["From"] = f"Addsy Soporte <{EMAIL_USER}>"
-    mensaje["To"] = destinatario
-
-    # --- Contenido del Correo en formato HTML ---
-    html = f"""
+    asunto = "Restablece tu contraseña de Modula"
+    cuerpo_html = f"""
     <html>
       <body style="font-family: Arial, sans-serif; color: #333;">
         <h2>Hola {nombre_usuario},</h2>
@@ -134,17 +109,4 @@ def enviar_correo_reseteo(destinatario: str, nombre_usuario: str, token: str):
       </body>
     </html>
     """
-    
-    parte_html = MIMEText(html, "html")
-    mensaje.attach(parte_html)
-
-    # --- Envío del Correo ---
-    contexto_ssl = ssl.create_default_context()
-    try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls(context=contexto_ssl)
-            server.login(EMAIL_USER, EMAIL_PASS)
-            server.sendmail(EMAIL_USER, destinatario, mensaje.as_string())
-        print(f"✅ Correo de reseteo de contraseña enviado exitosamente a {destinatario}.")
-    except Exception as e:
-        print(f"🔥🔥 ERROR al enviar correo de reseteo: {e}")
+    return _enviar_correo(destinatario, asunto, cuerpo_html)
