@@ -35,7 +35,7 @@ def registrar_nueva_sucursal(sucursal_data: SucursalCreate, current_user: dict):
 
 def get_mis_sucursales(current_user: dict):
     """Obtiene las sucursales del usuario actualmente autenticado."""
-    id_cuenta = current_user.get('id_cuenta_addsy')
+    id_cuenta = current_user.get('id')
     return get_sucursales_por_cuenta(id_cuenta)
 
 def anclar_red_a_sucursal(id_sucursal: int, data, current_user: dict):
