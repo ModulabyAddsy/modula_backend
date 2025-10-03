@@ -360,14 +360,19 @@ def crear_nueva_sucursal(id_cuenta: int, id_empresa_addsy: str, nombre_sucursal:
     
     try:
         with conn.cursor() as cur:
-            # 1. Obtener el id de la suscripción activa de la cuenta
+            # 1. Obtener el id de la suscripción activa O de prueba de la cuenta
             cur.execute(
-                "SELECT id FROM suscripciones_software WHERE id_cuenta_addsy = %s ORDER BY fecha_vencimiento DESC LIMIT 1;",
+                """
+                SELECT id FROM suscripciones_software 
+                WHERE id_cuenta_addsy = %s 
+                AND estado_suscripcion IN ('activa', 'prueba_gratis')
+                ORDER BY fecha_vencimiento DESC LIMIT 1;
+                """,
                 (id_cuenta,)
             )
             suscripcion = cur.fetchone()
             if not suscripcion:
-                raise Exception("No se encontró una suscripción activa para la cuenta.")
+                raise Exception("No se encontró una suscripción activa o de prueba para la cuenta.")
             suscripcion_id = suscripcion['id']
 
             # 2. Insertar la nueva sucursal y obtener su ID

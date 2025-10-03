@@ -10,7 +10,7 @@ def registrar_nueva_sucursal(sucursal_data: SucursalCreate, current_user: dict):
     """
     Orquesta la creación de una nueva sucursal y sincroniza con Stripe.
     """
-    id_cuenta = current_user.get('id_cuenta_addsy') # Es más seguro usar 'id_cuenta_addsy' del token
+    id_cuenta = current_user.get('id') # Es más seguro usar 'id_cuenta_addsy' del token
     id_empresa_addsy = current_user.get('id_empresa_addsy')
     
     # 1. Crear en la base de datos
